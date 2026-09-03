@@ -100,9 +100,17 @@ function checkIncome(policy, profile) {
   if (e.income_cond_code === '0043001' || e.income_max == null) {
     return check('income', '소득', 'na', '소득 조건 무관');
   }
-  const ok = profile.annual_income <= e.income_max;
+  /* 소득 상한이 결혼상태(신혼)에 따라 달라지는 상품이 있다.
+     예) 보금자리론 일반 7,000만 / 신혼 8,500만 */
+  let limit = e.income_max;
+  let via = '';
+  if (e.income_max_by && e.income_max_by[profile.marriage_code] != null) {
+    limit = e.income_max_by[profile.marriage_code];
+    via = ` (${CODE.marriage[profile.marriage_code]} 기준)`;
+  }
+  const ok = profile.annual_income <= limit;
   return check('income', '소득', ok ? 'pass' : 'fail',
-    `연소득 ${man(e.income_max)} 이하`,
+    `연소득 ${man(limit)} 이하${via}`,
     `신고 연소득 ${man(profile.annual_income)}`);
 }
 

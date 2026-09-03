@@ -41,11 +41,12 @@ log('');
 
 const v = id => (j1.find(r => r.policy_id === id) || {}).verdict;
 assert('버팀목 = 신청 가능',          v('youth_butimok') === 'eligible', v('youth_butimok'));
-assert('중기청 = 종료(0057003)',      v('sme_youth_jeonse') === 'ended', v('sme_youth_jeonse'));
+assert('중기청 = 조건부(신규접수 확인)', v('sme_youth_jeonse') === 'conditional', v('sme_youth_jeonse'));
 assert('청년월세 = 대상 아님(전세목표)', v('youth_monthly_rent') === 'not_eligible', v('youth_monthly_rent'));
 assert('청년수당 = 대상 아님(재직자)',   v('seoul_youth_allowance') === 'not_eligible', v('seoul_youth_allowance'));
-assert('도약계좌 = 조건부(5년만기)',    v('youth_leap_account') === 'conditional', v('youth_leap_account'));
-assert('내일채움 = 조건부(기업확인)',    v('youth_naeil_chaeum') === 'conditional', v('youth_naeil_chaeum'));
+assert('도약계좌 = 종료(2025.12 신규중단)', v('youth_leap_account') === 'ended', v('youth_leap_account'));
+assert('청년미래적금 = 조건부(3년만기)',  v('youth_future_savings') === 'conditional', v('youth_future_savings'));
+assert('내일채움 = 종료(신규 중단)',      v('youth_naeil_chaeum') === 'ended', v('youth_naeil_chaeum'));
 assert('내일저축 = 조건부(접수전)',      v('youth_tomorrow_saving') === 'conditional', v('youth_tomorrow_saving'));
 
 const butimok = j1.find(r => r.policy_id === 'youth_butimok');

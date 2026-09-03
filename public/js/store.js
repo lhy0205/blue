@@ -51,7 +51,7 @@ function emptyData() {
 }
 
 /* 심사위원이 회원가입 없이 바로 볼 수 있도록 데모 계정 2개를 심어둔다 */
-const SEED_VER = '2';
+const SEED_VER = '3';
 function seedDemoAccounts() {
   const users = readJSON(LS.users, {});
   if (localStorage.getItem('csj.seedver') === SEED_VER) return;
@@ -61,8 +61,9 @@ function seedDemoAccounts() {
     if (users[e]) { localStorage.removeItem(LS.data(users[e].id)); delete users[e]; }
   });
 
+  /* 데모 계정은 id 를 고정한다. 시드를 갱신해도 로그인 세션이 끊기지 않는다. */
   const mk = (email, profile, goal, picked) => {
-    const id = uid();
+    const id = 'u_' + email.split('@')[0];
     users[email] = { id, email, password: 'demo1234', created_at: new Date().toISOString() };
     const d = emptyData();
     d.profile = { id, ...profile };
@@ -87,7 +88,7 @@ function seedDemoAccounts() {
     target_zip_cd: '11440', current_asset: 6000000, monthly_saving: 583000,
   }, [
     { policy_id: 'youth_butimok', verdict: 'eligible', applied_amount: 80000000, is_final: true },
-    { policy_id: 'youth_leap_account', verdict: 'conditional', applied_amount: 1008000, is_final: false },
+    { policy_id: 'youth_future_savings', verdict: 'conditional', applied_amount: 720000, is_final: false },
   ]);
 
   mk('demo2@cheongsajin.kr', {

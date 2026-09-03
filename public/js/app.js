@@ -37,6 +37,8 @@ async function boot() {
   if (!state.user) { location.replace('./auth.html?mode=login'); return; }
 
   state.profile = await S.getProfile();
+  /* 세션은 남아 있는데 프로필이 사라진 경우(저장소 초기화 등) — 로그인부터 다시 */
+  if (!state.profile) { await S.signOut(); location.replace('./auth.html?mode=login'); return; }
   state.goal = await S.getActiveGoal();
   if (!state.goal) { location.replace('./index.html'); return; }
 
@@ -168,7 +170,11 @@ async function fillAI(mountId, task, data) {
 function sourceLine(src) {
   if (!src) return '';
   return `<div class="src">출처: <a href="${esc(src.url)}" target="_blank" rel="noopener">${esc(src.name)}</a>
-    · 기준일 ${esc(src.based_on)}${src.verified ? '' : ' · <b style="color:#b45309">검증 전</b>'}</div>`;
+    · 기준일 ${esc(src.based_on)}
+    ${src.verified
+      ? '· <b style="color:#15803d">원문 대조 완료</b>'
+      : '· <b style="color:#b45309">검증 전 — 신청 전 원문 확인 필요</b>'}
+    ${src.note ? `<div style="margin-top:3px">${esc(src.note)}</div>` : ''}</div>`;
 }
 
 const disclaimer = `<div class="src" style="margin-top:14px">
@@ -994,7 +1000,8 @@ function viewCredit(v) {
           </div>` : `<div class="note" style="margin-top:12px">현재 요금이 이미 낮은 편이라 전환 실익이 크지 않습니다.</div>`}
         <div class="warn" style="margin-top:12px">${esc(mv.notice)}</div>
         <div class="src">출처: <a href="${esc(mv.source.url)}" target="_blank" rel="noopener">${esc(mv.source.name)}</a>
-          · 기준일 ${esc(mv.source.based_on)} · <b style="color:#b45309">검증 전</b></div>`
+          · 기준일 ${esc(mv.source.based_on)}
+          ${mv.source.verified ? '· <b style="color:#15803d">시세 대조 완료</b>' : '· <b style="color:#b45309">검증 전</b>'}</div>`
       : `<div class="warn" style="margin-top:10px">통신비 결제내역이 없어 비교할 수 없습니다.
           STEP 4에서 통신요금 자동이체 내역을 등록해 주세요.</div>`}
     </div>
