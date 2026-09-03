@@ -75,7 +75,10 @@ export default async function handler(req, res) {
   if (!build) return res.status(400).json({ error: 'unknown_task', allowed: Object.keys(TASKS) });
 
   const spec = build(body);
-  try {
+
+  /* 모델 ID가 계정에서 안 열려 있으면 400/404 가 온다. 한 번은 대체 모델로 재시도한다. */
+  const FALLBACK = 'claude-haiku-4-5-20251001';
+  async function call(model) {
     const r = await fetch(API, {
       method: 'POST',
       headers: {
@@ -83,12 +86,37 @@ export default async function handler(req, res) {
         'x-api-key': key,
         'anthropic-version': '2023-06-01',
       },
-      body: JSON.stringify({ model: MODEL, max_tokens: spec.max_tokens, system: SYSTEM, messages: spec.messages }),
+      body: JSON.stringify({ model, max_tokens: spec.max_tokens, system: SYSTEM, messages: spec.messages }),
     });
-    const json = await r.json();
-    if (!r.ok) return res.status(r.status).json({ error: 'upstream_error', detail: json });
+    let json;
+    try { json = await r.json(); } catch { json = { raw: await r.text().catch(() => '') }; }
+    return { r, json, model };
+  }
+
+  try {
+    let { r, json, model } = await call(MODEL);
+    if (!r.ok && MODEL !== FALLBACK) {
+      const m = (json && json.error && json.error.message) || '';
+      if (/model|not_found|invalid_request/i.test(m) || r.status === 404) {
+        ({ r, json, model } = await call(FALLBACK));
+      }
+    }
+
+    if (!r.ok) {
+      /* 원인을 그대로 올려보낸다. 화면이 '(empty)' 같은 무의미한 메시지를 띄우지 않도록. */
+      const msg = (json && json.error && json.error.message) || (json && json.raw) || `HTTP ${r.status}`;
+      return res.status(r.status).json({
+        error: 'upstream_error', status: r.status, model, message: msg,
+      });
+    }
 
     const text = (json.content || []).filter((c) => c.type === 'text').map((c) => c.text).join('').trim();
+    if (!text) {
+      return res.status(502).json({
+        error: 'empty_response', model,
+        message: `모델이 빈 응답을 반환했습니다 (stop_reason: ${json.stop_reason || '알 수 없음'})`,
+      });
+    }
 
     if (body.task === 'parse_goal') {
       const m = text.match(/\{[\s\S]*\}/);
@@ -96,8 +124,8 @@ export default async function handler(req, res) {
       try { return res.status(200).json(JSON.parse(m[0])); }
       catch { return res.status(200).json({}); }
     }
-    res.status(200).json({ text, model: MODEL });
+    res.status(200).json({ text, model });
   } catch (e) {
-    res.status(500).json({ error: 'ai_failed', message: String(e.message || e) });
+    res.status(500).json({ error: 'ai_failed', message: String((e && e.message) || e) });
   }
 }
