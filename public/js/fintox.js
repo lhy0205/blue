@@ -184,6 +184,43 @@ export function scoreTransaction(tx, ctx) {
   };
 }
 
+/* ------------------------------- 넛지 저축 -------------------------------
+ * 설계서 10p: "3,400원 10% 셀프저축"
+ * 소비를 막는 대신, 쓴 만큼의 일부를 즉시 목표 저축으로 옮기게 한다.
+ * 위험도가 높을수록 비율을 올리되 상한을 둬서 부담이 되지 않게 한다.
+ * ----------------------------------------------------------------------- */
+const NUDGE_RATE = { safe: 0.05, watch: 0.10, caution: 0.15 };
+const NUDGE_CAP = 50000;
+
+export function nudgeFor(tx, score) {
+  const rate = NUDGE_RATE[score.level] || 0.1;
+  const raw = tx.amount * rate;
+  const amount = Math.min(NUDGE_CAP, Math.round(raw / 100) * 100);
+  return {
+    amount,
+    rate,
+    ratePct: Math.round(rate * 100),
+    capped: raw > NUDGE_CAP,
+    reason: {
+      safe: '가벼운 지출입니다. 5%만 옮겨도 습관이 됩니다.',
+      watch: '평소보다 큰 지출입니다. 10%를 목표 저축으로 옮겨 상쇄해 보세요.',
+      caution: '목표에 영향이 큰 지출입니다. 15%를 옮겨 속도를 지키세요.',
+    }[score.level],
+    formula: `${tx.amount.toLocaleString()}원 × ${Math.round(rate * 100)}% = ${amount.toLocaleString()}원`,
+  };
+}
+
+/** 넛지 저축 누적이 목표에 주는 효과 */
+export function nudgeImpact(totalSaved, monthlySaving, additionalNeeded) {
+  if (!totalSaved || !monthlySaving) return { days: 0, months: 0, pct: 0 };
+  const months = totalSaved / monthlySaving;
+  return {
+    days: Math.round(months * 30),
+    months: +months.toFixed(1),
+    pct: additionalNeeded ? +(totalSaved / additionalNeeded * 100).toFixed(1) : 0,
+  };
+}
+
 /* --------------------------- 월간 집계 리포트 ---------------------------- */
 export function monthlyReport(history, ctx = {}) {
   if (!history.length) return null;

@@ -5,7 +5,8 @@
 <script type="module">
 import { judgeAll, resolveCombination, filterByGoal, koreanAge } from './js/rules.js';
 import { buildBlueprint, feasibility, simulate, progress, money, ddayFrom } from './js/calc.js';
-import { parseBulk, scoreTransaction, monthlyReport, prescribe, median } from './js/fintox.js';
+import { parseBulk, scoreTransaction, monthlyReport, prescribe, median, nudgeFor, nudgeImpact } from './js/fintox.js';
+import { makeIcs, buildScheduleEvents } from './js/ics.js';
 
 const L = [];
 const log = (...a) => L.push(a.join(' '));
@@ -189,6 +190,39 @@ const g7 = { ...g2, target_amount: 700000000 };
 const j7 = judgeAll(filterByGoal(POLICIES, 'purchase'), p2, g7, TODAY);
 const bogeum7 = j7.find(r => r.policy_id === 'bogeumjari');
 assert('7억이면 보금자리론 주택가격 상한 초과로 판정 변경', bogeum7.verdict === 'not_eligible', bogeum7.verdict);
+
+/* ===================== 넛지 저축 / 서류 / 캘린더 ===================== */
+log('\n=== 넛지 저축 ===');
+const nSafe = nudgeFor({ amount: 8500 }, { level: 'safe' });
+const nWatch = nudgeFor({ amount: 34000 }, { level: 'watch' });
+const nCaution = nudgeFor({ amount: 1220252 }, { level: 'caution' });
+log(`  양호 8,500원 → ${nSafe.amount.toLocaleString()}원 (${nSafe.ratePct}%)`);
+log(`  관찰 34,000원 → ${nWatch.amount.toLocaleString()}원 (${nWatch.ratePct}%)`);
+log(`  주의 1,220,252원 → ${nCaution.amount.toLocaleString()}원 (상한 적용 ${nCaution.capped})`);
+assert('위험도가 높을수록 넛지 비율이 커진다', nSafe.rate < nWatch.rate && nWatch.rate < nCaution.rate,
+  `${nSafe.rate}/${nWatch.rate}/${nCaution.rate}`);
+assert('넛지 금액에 상한 5만원이 적용된다', nCaution.amount === 50000 && nCaution.capped, nCaution.amount);
+const imp = nudgeImpact(583000, 583000, 14000000);
+assert('누적 넛지가 D-Day 단축으로 환산된다', imp.days === 30, imp.days);
+
+log('\n=== 제출서류 ===');
+const withDocs = POLICIES.filter(p => p.documents && p.documents.length);
+log(`  서류 목록 보유 정책: ${withDocs.length}종 / 전체 ${POLICIES.length}종`);
+assert('핵심 정책에 제출서류가 있다', withDocs.length >= 15, withDocs.length);
+const bt = POLICIES.find(p => p.policy_id === 'youth_butimok');
+assert('버팀목 서류 7건', bt.documents.length === 7, bt.documents.length);
+assert('서류에 확인 안내문이 붙는다', !!bt.documents_note, 'none');
+
+log('\n=== 캘린더(.ics) ===');
+const evts = buildScheduleEvents(g1, bt, new Date('2028-09-03'));
+const ics = makeIcs(evts);
+log(`  일정 ${evts.length}건 생성`);
+evts.forEach(e => log(`   · ${e.title.replace('[청사진] ','')} — ${typeof e.date === 'string' ? e.date : e.date.toISOString().slice(0,10)} (${e.alarmDaysBefore}일 전 알림)`));
+assert('VCALENDAR 구조가 올바르다', ics.startsWith('BEGIN:VCALENDAR') && ics.trim().endsWith('END:VCALENDAR'), ics.slice(0,20));
+assert('VEVENT 수가 일정 수와 같다', (ics.match(/BEGIN:VEVENT/g) || []).length === evts.length, (ics.match(/BEGIN:VEVENT/g) || []).length);
+assert('미리 알림(VALARM)이 들어간다', (ics.match(/BEGIN:VALARM/g) || []).length === evts.length, (ics.match(/BEGIN:VALARM/g) || []).length);
+assert('줄바꿈이 CRLF 이다', ics.includes('\r\n'), 'no CRLF');
+assert('RFC5545 75옥텟 접힘 적용', ics.split('\r\n').every(l => new TextEncoder().encode(l).length <= 75), 'too long line');
 
 log(`\n${fails === 0 ? '🟢 전체 통과' : `🔴 실패 ${fails}건`}`);
 document.getElementById('out').textContent = L.join('\n');

@@ -9,6 +9,7 @@ import * as FT from './fintox.js';
 import * as CR from './credit.js';
 import { GOAL_LABEL } from './goalparse.js';
 import { fetchYouthPolicies, regionQuery } from './ycapi.js';
+import { makeIcs, downloadIcs, buildScheduleEvents } from './ics.js';
 import { regionName } from './regions.js';
 
 const $ = (s) => document.querySelector(s);
@@ -702,6 +703,10 @@ function viewStep4(v) {
     const rep = FT.monthlyReport(hist, { monthlyTarget: target });
     const verdictMap = Object.fromEntries(state.judged.map((r) => [r.policy_id, r.verdict]));
     const rx = FT.prescribe(rep, state.policies, verdictMap);
+    const nudge = FT.nudgeFor(latest, sc);
+    const nudgeState = getNudge();
+    const { bp: bpNow } = currentPlan();
+    const impact = FT.nudgeImpact(nudgeState.total, g.monthly_saving, bpNow.additionalNeeded);
     const tone = { safe: 'green', watch: 'yellow', caution: 'red' }[sc.level];
 
     box.innerHTML = `
@@ -730,6 +735,31 @@ function viewStep4(v) {
         </div>
         ${target ? `<div class="warn" style="margin-top:14px">이번 <b>${num(latest.amount)}원</b> 지출은 월 목표 저축액 ${num(target)}원의
           <b>약 ${sc.goalSharePct}%</b>입니다. 감정을 추정하지 않고 목표 저축과의 상대적 영향만 계산합니다.</div>` : ''}
+      </div>
+
+      <div class="card" style="box-shadow:none;margin-top:16px;background:#f0fdf4;border-color:#bbf7d0">
+        <div class="mini" style="color:var(--green-tx)">SELF-SAVING NUDGE</div>
+        <div style="font-size:17px;font-weight:800;color:var(--navy);margin:6px 0 4px">
+          쓴 만큼의 ${nudge.ratePct}%를 지금 목표 저축으로 옮기세요</div>
+        <div style="font-size:13px;color:var(--muted);line-height:1.6">${esc(nudge.reason)}
+          소비를 되돌릴 수는 없지만, 일부를 즉시 저축으로 넘기면 목표 속도는 지킬 수 있습니다.</div>
+        <div style="display:flex;align-items:center;gap:16px;margin-top:14px;flex-wrap:wrap">
+          <div class="stat" style="text-align:left;background:#fff;min-width:150px">
+            <div class="l">이번 넛지 금액</div>
+            <div class="v green" style="font-size:26px">${num(nudge.amount)}원</div>
+            <div class="f">🧮 ${esc(nudge.formula)}${nudge.capped ? ' (상한 50,000원 적용)' : ''}</div>
+          </div>
+          <button class="btn sm" id="doNudge">이 금액 저축으로 옮기기</button>
+        </div>
+        ${nudgeState.total ? `
+          <div class="note" style="margin-top:14px">
+            💰 누적 넛지 저축 <b>${num(nudgeState.total)}원</b>
+            ${impact.days ? ` · 목표 도달을 약 <b>${impact.days}일</b> 앞당깁니다` : ''}
+            ${impact.pct ? ` (추가 필요자금의 ${impact.pct}%)` : ''}
+            <div style="font-size:11px;font-weight:500;margin-top:5px;opacity:.85">
+              최근: ${nudgeState.items.slice(0, 3).map((x) => `${esc(x.label)} ${num(x.amount)}원`).join(' · ')}
+            </div>
+          </div>` : ''}
       </div>
 
       <div class="card" style="box-shadow:none;margin-top:16px">
@@ -772,6 +802,11 @@ function viewStep4(v) {
         상위카테고리: rep.categories.slice(0, 3).map((c) => ({ 분류: c.cat, 금액: c.amount, 비중: c.pct })) },
       제안가능한_공공혜택: rx.map((r) => ({ 제목: r.title, 절감예상: r.saving })),
     });
+
+    $('#doNudge')?.addEventListener('click', () => {
+      addNudge(nudge.amount, latest.merchant_norm || latest.merchant_raw);
+      renderFT();
+    });
   }
 
   function monthlyBudget() {
@@ -786,6 +821,10 @@ function viewStep5(v) {
   const { bp } = currentPlan();
   const pr = progress(g, bp, state.checklist);
   const finalPolicy = state.policies.find((p) => p.policy_id === state.finalId);
+  const docState = finalPolicy ? getDocs(finalPolicy.policy_id) : {};
+  const docDone = finalPolicy && finalPolicy.documents
+    ? finalPolicy.documents.filter((_, i) => docState[i]).length : 0;
+  const schedule = buildScheduleEvents(g, finalPolicy, pr.targetDday.date);
 
   const months = g.target_months || 24;
   const nodes = [
@@ -818,6 +857,49 @@ function viewStep5(v) {
       <div class="note" style="margin-top:14px">📌 <b>중요:</b> 준비도는 대출 승인확률이 아닙니다. 목표 실행에 필요한 정보·서류·행동의 완료율입니다.</div>
     </div>
 
+    ${finalPolicy && finalPolicy.documents ? `
+    <div class="card" style="box-shadow:none;margin-top:16px">
+      <div class="card-h" style="margin-bottom:8px">
+        <div><div class="mini">REQUIRED DOCUMENTS</div>
+          <div style="font-size:17px;font-weight:800;color:var(--navy);margin-top:4px">필요 서류 체크리스트</div></div>
+        <span class="badge ${docDone === finalPolicy.documents.length ? 'green' : 'blue'}">${docDone} / ${finalPolicy.documents.length}</span>
+      </div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:12px">
+        <b>${esc(finalPolicy.name)}</b> 신청에 일반적으로 필요한 서류입니다. 미리 발급받아 두면 신청일에 바로 접수할 수 있습니다.</div>
+      <div class="bar lg" style="margin-bottom:14px"><i style="width:${Math.round(docDone / finalPolicy.documents.length * 100)}%;background:var(--green)"></i></div>
+      <div style="display:grid;gap:9px">
+        ${finalPolicy.documents.map((d, i) => `
+          <label class="check ${docState[i] ? 'on' : ''}" data-doc="${i}">
+            <input type="checkbox" ${docState[i] ? 'checked' : ''}>
+            <span style="flex:1">${esc(d)}</span></label>`).join('')}
+      </div>
+      <div class="warn" style="margin-top:12px">${esc(finalPolicy.documents_note || '')}</div>
+      ${finalPolicy.source && finalPolicy.source.url ? `<a class="btn ghost sm" style="margin-top:10px"
+        href="${esc(finalPolicy.source.url)}" target="_blank" rel="noopener">공고에서 제출서류 확인 →</a>` : ''}
+    </div>` : ''}
+
+    <div class="card" style="box-shadow:none;margin-top:16px">
+      <div class="mini">SCHEDULE ALERT</div>
+      <div style="font-size:17px;font-weight:800;color:var(--navy);margin:6px 0 4px">신청일 알림 받기</div>
+      <div style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:12px">
+        아래 일정을 캘린더 파일(.ics)로 내려받아 구글·애플·아웃룩 캘린더에 넣으면,
+        <b>신청 시점에 기기가 대신 알려줍니다.</b> 각 일정에는 미리 알림이 설정되어 있습니다.</div>
+      ${schedule.length ? `
+        <div style="display:grid;gap:8px">
+          ${schedule.map((e) => `
+            <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;
+                        border:1px solid var(--bd);border-radius:10px;padding:11px 14px;background:#fff">
+              <span style="font-size:13px;font-weight:600;color:var(--navy)">${esc(e.title.replace('[청사진] ', ''))}</span>
+              <span style="font-size:12px;color:var(--muted)">
+                ${esc(typeof e.date === 'string' ? e.date : new Date(e.date).toISOString().slice(0, 10))}
+                · ${e.alarmDaysBefore}일 전 알림</span>
+            </div>`).join('')}
+        </div>
+        <button class="btn sm" style="margin-top:14px" id="dlIcs">📅 캘린더에 추가 (.ics 내려받기)</button>
+        <div class="src">파일을 열면 캘린더 앱이 일정을 가져옵니다. 구독형이 아니라 한 번 내려받는 방식이라, 정책 일정이 바뀌면 다시 받아야 합니다.</div>`
+      : '<div class="empty">알림으로 만들 일정이 아직 없습니다. STEP 3에서 정책을 확정해 주세요.</div>'}
+    </div>
+
     <div class="tl" style="margin-top:20px">
       ${nodes.map((n) => `<div class="node ${n.s}">
         <div class="dot">${esc(n.d)}</div>
@@ -841,6 +923,33 @@ function viewStep5(v) {
       </div>
     </div>
   </section>`));
+
+  /* 제출서류 체크 — 전부 체크되면 준비도의 '필요서류 체크' 항목도 함께 완료 처리 */
+  v.querySelectorAll('[data-doc]').forEach((l) => l.addEventListener('click', async (e) => {
+    e.preventDefault();
+    const i = Number(l.dataset.doc);
+    const next = !docState[i];
+    toggleDoc(finalPolicy.policy_id, i, next);
+    const d = getDocs(finalPolicy.policy_id);
+    const all = finalPolicy.documents.every((_, k) => d[k]);
+    const item = state.checklist.find((c) => c.item_key === 'documents');
+    if (item && item.is_done !== all) {
+      item.is_done = all;
+      await S.toggleChecklist(g.id, 'documents', all);
+    }
+    route();
+  }));
+
+  /* 캘린더 내려받기 — 알림 설정 항목 완료 처리 */
+  $('#dlIcs')?.addEventListener('click', async () => {
+    downloadIcs(`청사진_${GOAL_LABEL[g.goal_type] || '목표'}_일정`, makeIcs(schedule));
+    const item = state.checklist.find((c) => c.item_key === 'apply_alarm');
+    if (item && !item.is_done) {
+      item.is_done = true;
+      await S.toggleChecklist(g.id, 'apply_alarm', true);
+      route();
+    }
+  });
 
   v.querySelectorAll('#cl label').forEach((l) => l.addEventListener('click', async (e) => {
     e.preventDefault();
@@ -950,6 +1059,29 @@ function viewDashboard(v) {
 
 /* ======================== 신용 빌드업 ==================================== */
 const flagKey = (k) => `csj.flag.${state.goal.id}.${k}`;
+
+/* 넛지 저축 누적 */
+const nudgeKey = () => `csj.nudge.${state.goal.id}`;
+function getNudge() {
+  try { return JSON.parse(localStorage.getItem(nudgeKey())) || { total: 0, items: [] }; }
+  catch { return { total: 0, items: [] }; }
+}
+function addNudge(amount, label) {
+  const n = getNudge();
+  n.total += amount;
+  n.items.unshift({ amount, label, at: new Date().toISOString() });
+  n.items = n.items.slice(0, 50);
+  localStorage.setItem(nudgeKey(), JSON.stringify(n));
+  return n;
+}
+/* 제출서류 체크 상태 */
+const docKey = (pid) => `csj.docs.${state.goal.id}.${pid}`;
+function getDocs(pid) {
+  try { return JSON.parse(localStorage.getItem(docKey(pid))) || {}; } catch { return {}; }
+}
+function toggleDoc(pid, i, on) {
+  const d = getDocs(pid); d[i] = on; localStorage.setItem(docKey(pid), JSON.stringify(d)); return d;
+}
 const getFlag = (k) => localStorage.getItem(flagKey(k)) === '1';
 const setFlag = (k, v) => localStorage.setItem(flagKey(k), v ? '1' : '0');
 
