@@ -164,7 +164,7 @@ async function fillAI(mountId, task, data) {
     box.innerHTML = `<div class="card" style="box-shadow:none;margin-top:12px;background:#fffdf8;border-color:#ffedd5">
       <span class="chip" style="background:#ffedd5;color:#c2410c;font-weight:800">AI ADVICE</span>
       <div style="margin-top:9px;font-size:13.5px;color:var(--tx);line-height:1.7">${esc(j.text)}</div>
-      <div class="src">계산·판정은 코드가 수행했고, 위 문장은 그 결과를 해석한 것입니다 · 모델 ${esc(j.model || 'Claude')}</div>
+      <div class="src">계산·판정은 코드가 수행했고, 위 문장은 그 결과를 해석한 것입니다</div>
     </div>`;
   } catch (e) {
     box.innerHTML = `<div class="warn" style="margin-top:10px">
