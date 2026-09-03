@@ -8,6 +8,7 @@ import { buildBlueprint, feasibility, simulate, tradeoff, progress, money, month
 import * as FT from './fintox.js';
 import * as CR from './credit.js';
 import { GOAL_LABEL } from './goalparse.js';
+import { fetchYouthPolicies, regionQuery } from './ycapi.js';
 import { regionName } from './regions.js';
 
 const $ = (s) => document.querySelector(s);
@@ -66,7 +67,7 @@ async function boot() {
     `${esc(state.profile.nickname)} · ${esc(GOAL_LABEL[state.goal.goal_type] || '목표')}` +
     ` <span class="chip" style="margin-left:6px">${mode === 'supabase' ? '계정 연동' : '로컬 저장'}</span>` +
     ` <span class="chip" style="${S.aiEnabled() ? 'background:#ffedd5;color:#c2410c' : ''}">${S.aiEnabled() ? 'AI 연결됨' : 'AI 미연결'}</span>` +
-    ` <span class="chip" style="${S.policyApiEnabled() ? 'background:#dcfce7;color:#15803d' : ''}">${S.policyApiEnabled() ? '정책 API' : '정책 DB'}</span>`;
+    ` <span class="chip" style="${S.policyApiEnabled() ? 'background:#dcfce7;color:#15803d' : ''}">${S.policyApiEnabled() ? '정책 API 사용 가능' : `정책 DB ${state.policies.length}종`}</span>`;
 
   window.addEventListener('hashchange', route);
   route();
@@ -188,6 +189,67 @@ function sourceLine(src) {
 const disclaimer = `<div class="src" style="margin-top:14px">
   ※ 표시 금액은 <b>상품상 최대한도 기준 1차 자격검토 결과</b>이며 승인·확정 금액이 아닙니다.
   실제 금액은 신청 시점의 은행·보증기관·정책 기준에 따라 달라질 수 있습니다.</div>`;
+
+/* ---------------------------------------------------------------------------
+ * 페이지네이션 — 목록이 길어지면 공지사항처럼 10개씩 끊어 보여준다.
+ *   mount      결과를 그릴 요소
+ *   items      전체 항목 배열
+ *   renderItem 항목 1개 → HTML 문자열
+ *   wrap       항목들을 감싸는 껍데기 (표는 <table>…로 감싼다)
+ * ------------------------------------------------------------------------- */
+function paginate(mount, items, renderItem, opts) {
+  const o = opts || {};
+  const perPage = o.perPage || 10;
+  const wrap = o.wrap || ((h) => h);
+  const unit = o.unit || '건';
+  const pages = Math.max(1, Math.ceil(items.length / perPage));
+  let page = 1;
+
+  function pageButtons() {
+    /* 1 … 4 5 [6] 7 8 … 20 형태로 최대 7개 노출 */
+    const out = [];
+    const push = (p) => out.push(
+      `<button data-page="${p}" class="${p === page ? 'on' : ''}">${p}</button>`);
+    const dots = () => out.push('<span class="dots">…</span>');
+
+    if (pages <= 7) {
+      for (let p = 1; p <= pages; p++) push(p);
+    } else if (page <= 4) {
+      for (let p = 1; p <= 5; p++) push(p);
+      dots(); push(pages);
+    } else if (page >= pages - 3) {
+      push(1); dots();
+      for (let p = pages - 4; p <= pages; p++) push(p);
+    } else {
+      push(1); dots();
+      for (let p = page - 1; p <= page + 1; p++) push(p);
+      dots(); push(pages);
+    }
+    return out.join('');
+  }
+
+  function draw() {
+    const start = (page - 1) * perPage;
+    const slice = items.slice(start, start + perPage);
+    mount.innerHTML = wrap(slice.map(renderItem).join('')) + (pages > 1 ? `
+      <div class="pager">
+        <button data-page="${page - 1}" ${page === 1 ? 'disabled' : ''}>‹ 이전</button>
+        ${pageButtons()}
+        <button data-page="${page + 1}" ${page === pages ? 'disabled' : ''}>다음 ›</button>
+      </div>
+      <div class="pager-info">전체 ${items.length}${unit} 중 ${start + 1}–${start + slice.length}${unit} · ${page}/${pages} 페이지</div>
+    ` : `<div class="pager-info">전체 ${items.length}${unit}</div>`);
+
+    mount.querySelectorAll('[data-page]').forEach((b) => b.addEventListener('click', () => {
+      const p = Number(b.dataset.page);
+      if (!p || p < 1 || p > pages || p === page) return;
+      page = p;
+      draw();
+      mount.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }));
+  }
+  draw();
+}
 
 /* ======================== STEP 1 · 정책 판정 ============================== */
 function viewStep1(v) {
@@ -1049,19 +1111,101 @@ function viewHistory(v) {
 }
 
 function viewPolicies(v) {
+  const judgedLocal = judgeAll(state.policies, state.profile, state.goal, new Date());
+
   v.append(el(`<section class="card">
     <div class="card-h"><div class="card-t">정책 모아보기</div>
-      <span class="tag">${state.policies.length}개 · 기준일 ${esc(state.meta.based_on)}</span></div>
+      <span class="tag">정형 DB ${state.policies.length}종 · 기준일 ${esc(state.meta.based_on)}</span></div>
     <p class="card-sub">현재 프로필 기준 판정 결과입니다. 목표와 무관한 정책도 모두 보여줍니다.</p>
-    <table class="wf"><thead><tr><th style="width:110px">상태</th><th>정책명</th><th>분류</th><th>기관</th><th>신청기간</th></tr></thead>
-      <tbody>${judgeAll(state.policies, state.profile, state.goal, new Date()).map((r) => `<tr>
-        <td><span class="badge ${VERDICT[r.verdict].tone}">${r.dot} ${r.label}</span></td>
-        <td class="nm">${esc(r.policy.name)}</td>
-        <td>${esc(r.policy.lclsf)} · ${esc(r.policy.mclsf)}</td>
-        <td style="color:var(--muted)">${esc(r.policy.provider)}</td>
-        <td style="color:var(--muted)">${esc(r.policy.apply_period.label)}</td></tr>`).join('')}</tbody></table>
-    <div class="warn" style="margin-top:14px">${esc(state.meta.review_notice)}</div>
+    <div id="localList"></div>
+    <div class="note" style="margin-top:12px">
+      이 17종은 대출한도·금리 같은 <b>금융 파라미터를 갖고 있어 목표 자금 계산에 직접 쓰입니다.</b>
+    </div>
+    <div class="warn" style="margin-top:10px">${esc(state.meta.review_notice)}</div>
   </section>`));
+
+  paginate($('#localList'), judgedLocal, (r) => `<tr>
+      <td><span class="badge ${VERDICT[r.verdict].tone}">${r.dot} ${r.label}</span></td>
+      <td class="nm">${esc(r.policy.name)}</td>
+      <td>${esc(r.policy.lclsf)} · ${esc(r.policy.mclsf)}</td>
+      <td style="color:var(--muted)">${esc(r.policy.provider)}</td>
+      <td style="color:var(--muted)">${esc(r.policy.apply_period.label || '-')}</td></tr>`, {
+    perPage: 10, unit: '종',
+    wrap: (rows) => `<table class="wf"><thead><tr><th style="width:110px">상태</th><th>정책명</th>
+      <th>분류</th><th>기관</th><th>신청기간</th></tr></thead><tbody>${rows}</tbody></table>`,
+  });
+
+  /* ── 온통청년 API 로 지역 정책 확장 ── */
+  const box = el(`<section class="card">
+    <div class="card-h">
+      <div><div class="mini">NATIONAL POLICY API</div>
+        <div class="card-t" style="margin-top:4px">내 지역에서 더 받을 수 있는 정책</div></div>
+      <span class="tag" id="ycTag">불러오는 중…</span>
+    </div>
+    <p class="card-sub">온통청년(한국고용정보원) 청년정책 API에서 <b>${esc(state.profile.region_name || state.profile.zip_cd)}</b> 기준으로
+      조회한 정책입니다. 위 17종과 달리 <b>금액 계산에는 쓰지 않고 자격 판정만</b> 합니다 —
+      이 API는 대출한도·금리 같은 금융 파라미터를 제공하지 않기 때문입니다.</p>
+    <div id="ycBody"><div class="empty"><span class="spin"></span> 정책을 불러오는 중…</div></div>
+  </section>`);
+  v.append(box);
+
+  (async () => {
+    const res = await fetchYouthPolicies({ zipCd: regionQuery(state.profile.zip_cd), pageSize: 100 });
+    const tag = $('#ycTag'); const body = $('#ycBody');
+
+    if (!res.ok) {
+      tag.textContent = '연결 안 됨';
+      body.innerHTML = `<div class="warn">
+        <b>정책 API를 불러오지 못했습니다.</b> 위 정형 DB ${state.policies.length}종은 그대로 사용할 수 있습니다.
+        <div style="font-size:11px;margin-top:6px;opacity:.9">사유: ${esc(String(res.reason).slice(0, 200))}</div>
+        ${/no_api_key/.test(res.reason) ? '<div style="font-size:11px;margin-top:6px;font-weight:700">👉 환경변수 YOUTH_API_KEY 를 설정하고 재배포하세요.</div>' : ''}
+      </div>`;
+      return;
+    }
+    if (!res.policies.length) {
+      tag.textContent = '해당 없음';
+      body.innerHTML = '<div class="empty">이 지역 조건으로 조회된 추가 정책이 없습니다.</div>';
+      return;
+    }
+
+    const judged = judgeAll(res.policies, state.profile, state.goal, new Date());
+    /* 판정 순서를 먼저 지키고, 같은 판정 안에서 우리 지역 전용을 위로 올린다 */
+    const VORDER = { eligible: 0, conditional: 1, not_eligible: 2, ended: 3 };
+    judged.sort((a, b) => (VORDER[a.verdict] - VORDER[b.verdict])
+      || (a.policy.region_scope.rank - b.policy.region_scope.rank));
+    const usable = judged.filter((r) => ['eligible', 'conditional'].includes(r.verdict));
+    const localOnly = judged.filter((r) => r.policy.region_scope.rank === 0 && ['eligible','conditional'].includes(r.verdict));
+    tag.textContent = `${res.total.toLocaleString()}건 중 ${judged.length}건 조회 · 신청 가능 ${usable.length}건 (지역 전용 ${localOnly.length}건)`;
+
+    body.innerHTML = `
+      <div class="grid4" style="margin-bottom:14px">
+        ${['eligible', 'conditional', 'not_eligible', 'ended'].map((k) => `
+          <div class="stat"><div class="l">${VERDICT[k].dot} ${VERDICT[k].label}</div>
+            <div class="v" style="font-size:19px">${judged.filter((r) => r.verdict === k).length}건</div></div>`).join('')}
+      </div>
+      <div id="ycList"></div>
+      <div class="note" style="margin-top:14px">
+        판정은 API가 내려준 연령·소득·지역·취업 요건을 우리 규칙 엔진에 그대로 넣어 계산한 것입니다. 금액은 API에 없어 표시하지 않습니다.<br>‘전국’으로 표시된 정책은 <b>운영기관이 특정 지자체여도 지역코드가 전국으로 등록된 것</b>이라 실제 신청 가능 여부는 공고 원문 확인이 필요합니다.
+      </div>`;
+
+    paginate($('#ycList'), judged, (r) => `
+      <div style="border:1px solid var(--bd);border-radius:11px;padding:13px 15px;margin-bottom:9px;background:${r.verdict === 'eligible' ? 'var(--sky)' : '#fff'}">
+        <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap">
+          <b style="font-size:13.5px;color:var(--navy)">${esc(r.policy.name)}</b>
+          <span style="display:flex;gap:6px;align-items:center">
+            <span class="chip" style="${r.policy.region_scope.rank === 0 ? 'background:#dcfce7;color:#15803d' : ''}">${esc(r.policy.region_scope.label)}</span>
+            <span class="badge ${VERDICT[r.verdict].tone}">${r.dot} ${r.label}</span>
+          </span>
+        </div>
+        <div style="font-size:12px;color:var(--muted);margin-top:5px">${esc(r.reason)}</div>
+        <div class="src" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+          <span>${esc(r.policy.provider)}</span>
+          <span>· ${esc(r.policy.apply_period.label || '기간 미상')}${r.policy.apply_period.start ? ` ${esc(r.policy.apply_period.start)} ~ ${esc(r.policy.apply_period.end || '')}` : ''}</span>
+          ${r.policy.source.based_on ? `<span>· 기준일 ${esc(r.policy.source.based_on)}</span>` : ''}
+          ${r.policy.action.apply_url ? `<a href="${esc(r.policy.action.apply_url)}" target="_blank" rel="noopener">신청 페이지 →</a>` : ''}
+        </div>
+      </div>`, { perPage: 10, unit: '건' });
+  })();
 }
 
 function viewMypage(v) {
