@@ -14,19 +14,54 @@
 
 const ENDPOINT = 'https://www.youthcenter.go.kr/go/ythip/getPlcy';
 
+/* ── 실제 응답에서 확인된 특이사항 (2026-09-03, 총 2,750건 기준) ──────────
+ *  · 비어있는 필드가 빈 문자열이 아니라 공백 8칸('        ')으로 온다
+ *  · aplyYmd 는 "20260818 ~ 20260903" 형태의 한 덩어리 문자열이다
+ *  · 날짜는 하이픈 없는 YYYYMMDD
+ *  · lclsfNm / mclsfNm 은 콤마로 여러 개가 올 수 있다
+ *  · earnMaxAmt 가 0 이면 '소득 무관'(earnCndSeCd=0043001)을 뜻한다
+ * ------------------------------------------------------------------------ */
+const s = (v) => {
+  if (v == null) return null;
+  const t = String(v).trim();
+  return t === '' ? null : t;
+};
+const n = (v) => {
+  const t = s(v);
+  if (t == null) return null;
+  const num = Number(t.replace(/[^\d]/g, ''));
+  return Number.isFinite(num) ? num : null;
+};
+const list = (v) => {
+  const t = s(v);
+  return t ? t.split(',').map((x) => x.trim()).filter(Boolean) : [];
+};
+/* '20260818' → '2026-08-18' */
+const ymd = (v) => {
+  const t = s(v);
+  if (!t) return null;
+  const digits = t.replace(/[^\d]/g, '');
+  return digits.length === 8 ? `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}` : t;
+};
+/* '20260818 ~ 20260903' → { start, end } */
+function parseApplyRange(raw) {
+  const t = s(raw);
+  if (!t) return { start: null, end: null };
+  const parts = t.split('~').map((x) => x.trim()).filter(Boolean);
+  return { start: ymd(parts[0]), end: ymd(parts[1] || null) };
+}
+
 /* 온통청년 코드 → 우리 스키마 */
 function normalize(item) {
-  const s = (v) => (v == null || v === '' ? null : String(v).trim());
-  const n = (v) => (v == null || v === '' ? null : Number(String(v).replace(/[^\d]/g, '')) || null);
 
   return {
     plcy_no: s(item.plcyNo),
     name: s(item.plcyNm),
     explain: s(item.plcyExplnCn),
     support: s(item.plcySprtCn),
-    keywords: s(item.plcyKywdNm) ? s(item.plcyKywdNm).split(',').map((x) => x.trim()) : [],
-    lclsf: s(item.lclsfNm),
-    mclsf: s(item.mclsfNm),
+    keywords: list(item.plcyKywdNm),
+    lclsf: list(item.lclsfNm),   // 실제 값: 일자리 / 주거 / 교육･직업훈련 / 금융･복지･문화 / 참여･기반
+    mclsf: list(item.mclsfNm),   // 다중값 예: '주택 및 거주지,전월세 및 주거급여 지원'
     provider: s(item.sprvsnInstCdNm) || s(item.operInstCdNm),
     operator: s(item.operInstCdNm),
 
@@ -35,26 +70,33 @@ function normalize(item) {
       age: { min: n(item.sprtTrgtMinAge), max: n(item.sprtTrgtMaxAge), limited: item.sprtTrgtAgeLmtYn === 'Y' },
       income_cond_code: s(item.earnCndSeCd),
       income_min: n(item.earnMinAmt),
-      income_max: n(item.earnMaxAmt),
+      /* 소득 무관(0043001)이거나 상한이 0이면 '제한 없음'으로 본다 */
+      income_max: (s(item.earnCndSeCd) === '0043001' || n(item.earnMaxAmt) === 0)
+        ? null : n(item.earnMaxAmt),
       income_note: s(item.earnEtcCn),
       marriage_code: s(item.mrgSttsCd),
-      job_codes: s(item.jobCd) ? s(item.jobCd).split(',') : [],
-      school_codes: s(item.schoolCd) ? s(item.schoolCd).split(',') : [],
-      major_codes: s(item.plcyMajorCd) ? s(item.plcyMajorCd).split(',') : [],
-      sbiz_codes: s(item.sBizCd) ? s(item.sBizCd).split(',') : [],
-      zip_cds: s(item.zipCd) ? s(item.zipCd).split(',') : [],
+      job_codes: list(item.jobCd),
+      school_codes: list(item.schoolCd),
+      major_codes: list(item.plcyMajorCd),
+      sbiz_codes: list(item.sBizCd),
+      zip_cds: list(item.zipCd),
       extra_note: s(item.addAplyQlfcCndCn),
       exclude_note: s(item.ptcpPrpTrgtCn),
     },
 
-    /* 신청 기간 → Ended / Conditional 판정 근거 */
-    apply_period: {
-      code: s(item.aplyPrdSeCd),          // 0057001 특정기간 / 0057002 상시 / 0057003 마감
-      raw: s(item.aplyYmd),
-      biz_start: s(item.bizPrdBgngYmd),
-      biz_end: s(item.bizPrdEndYmd),
-      biz_note: s(item.bizPrdEtcCn),
-    },
+    /* 신청 기간 → Ended / Conditional 판정 근거
+       aplyYmd 는 '20260818 ~ 20260903' 한 덩어리로 오므로 여기서 쪼갠다 */
+    apply_period: Object.assign(
+      {
+        code: s(item.aplyPrdSeCd),        // 0057001 특정기간 / 0057002 상시 / 0057003 마감
+        label: { '0057001': '특정기간', '0057002': '상시', '0057003': '마감' }[s(item.aplyPrdSeCd)] || null,
+        raw: s(item.aplyYmd),
+        biz_start: ymd(item.bizPrdBgngYmd),
+        biz_end: ymd(item.bizPrdEndYmd),
+        biz_note: s(item.bizPrdEtcCn),
+      },
+      parseApplyRange(item.aplyYmd),      // → start, end
+    ),
     scale: {
       limited: item.sprtSclLmtYn === 'Y',
       count: n(item.sprtSclCnt),
@@ -75,7 +117,8 @@ function normalize(item) {
       name: s(item.sprvsnInstCdNm) || '온통청년',
       url: s(item.refUrlAddr1) || s(item.aplyUrlAddr) || 'https://www.youthcenter.go.kr',
       ref2: s(item.refUrlAddr2),
-      based_on: s(item.lastMdfcnDt) || s(item.frstRegDt),
+      /* '2026-09-03 10:50:25' → '2026-09-03' */
+      based_on: (s(item.lastMdfcnDt) || s(item.frstRegDt) || '').slice(0, 10) || null,
       api: 'youthcenter.go.kr/go/ythip/getPlcy',
     },
   };

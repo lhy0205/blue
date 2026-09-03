@@ -5,7 +5,8 @@
     "code_system": "온통청년 OPEN API 코드체계 (API코드정보.xlsx)",
     "review_notice": "verified=true 항목은 2026-09-03 기준 공식/공신력 있는 출처로 대조했습니다. verified=false 항목은 화면에 '검증 전' 배지가 표시되며 신청 전 원문 확인이 필요합니다. 금리·한도는 공시 시점에 따라 수시 변동합니다.",
     "why_local_db": "온통청년 API는 연령·소득·지역 요건은 제공하지만 대출한도(max_amount)·보증금 대비 비율(ratio_of_target)·금리 같은 금융 파라미터를 제공하지 않는다. 목표 자금 계산에 필요한 값이므로 핵심 정책만 정형 DB로 직접 관리한다.",
-    "verified_at": "2026-09-03"
+    "verified_at": "2026-09-03",
+    "classification_note": "lclsf/mclsf 는 온통청년 API 가 실제로 내려주는 표기를 따른다. 코드정의서(API코드정보.xlsx)의 '교육/복지문화/참여권리'와 실제 응답의 '교육･직업훈련/금융･복지･문화/참여･기반'이 다르므로 실제 응답 기준으로 맞췄다. (2026-09-03 확인)"
   },
   "exclusive_groups": {
     "jeonse_loan": {
@@ -562,7 +563,7 @@
       "provider": "서민금융진흥원",
       "category": "asset_building",
       "is_policy": true,
-      "lclsf": "복지문화",
+      "lclsf": "금융･복지･문화",
       "mclsf": "취약계층 및 금융지원",
       "keywords": [
         "보조금",
@@ -631,7 +632,7 @@
       "provider": "금융위원회 · 서민금융진흥원",
       "category": "asset_building",
       "is_policy": true,
-      "lclsf": "복지문화",
+      "lclsf": "금융･복지･문화",
       "mclsf": "취약계층 및 금융지원",
       "keywords": [
         "보조금",
@@ -706,7 +707,7 @@
       "provider": "보건복지부",
       "category": "asset_building",
       "is_policy": true,
-      "lclsf": "복지문화",
+      "lclsf": "금융･복지･문화",
       "mclsf": "취약계층 및 금융지원",
       "keywords": [
         "보조금"
@@ -840,7 +841,7 @@
       "provider": "금융위원회",
       "category": "tax_benefit",
       "is_policy": true,
-      "lclsf": "복지문화",
+      "lclsf": "금융･복지･문화",
       "mclsf": "취약계층 및 금융지원",
       "keywords": [
         "금리혜택"
@@ -1038,8 +1039,8 @@
       "provider": "국토교통부",
       "category": "living_discount",
       "is_policy": true,
-      "lclsf": "복지문화",
-      "mclsf": "문화활동",
+      "lclsf": "금융･복지･문화",
+      "mclsf": "문화활동 및 생활지원",
       "keywords": [
         "바우처"
       ],
@@ -1102,8 +1103,8 @@
       "provider": "서울특별시",
       "category": "living_discount",
       "is_policy": true,
-      "lclsf": "복지문화",
-      "mclsf": "문화활동",
+      "lclsf": "금융･복지･문화",
+      "mclsf": "문화활동 및 생활지원",
       "keywords": [
         "바우처"
       ],
@@ -1163,8 +1164,8 @@
       "provider": "행정안전부 / 지자체",
       "category": "living_discount",
       "is_policy": true,
-      "lclsf": "복지문화",
-      "mclsf": "문화활동",
+      "lclsf": "금융･복지･문화",
+      "mclsf": "문화활동 및 생활지원",
       "keywords": [
         "바우처"
       ],
