@@ -62,7 +62,9 @@ async function boot() {
   $('#avatar').addEventListener('click', () => (location.hash = '#mypage'));
   $('#dbInfo').innerHTML =
     `${esc(state.profile.nickname)} · ${esc(GOAL_LABEL[state.goal.goal_type] || '목표')}` +
-    ` <span class="chip" style="margin-left:6px">${mode === 'supabase' ? '계정 연동' : '로컬 저장'}</span>`;
+    ` <span class="chip" style="margin-left:6px">${mode === 'supabase' ? '계정 연동' : '로컬 저장'}</span>` +
+    ` <span class="chip" style="${S.aiEnabled() ? 'background:#ffedd5;color:#c2410c' : ''}">${S.aiEnabled() ? 'AI 연결됨' : 'AI 미연결'}</span>` +
+    ` <span class="chip" style="${S.policyApiEnabled() ? 'background:#dcfce7;color:#15803d' : ''}">${S.policyApiEnabled() ? '정책 API' : '정책 DB'}</span>`;
 
   window.addEventListener('hashchange', route);
   route();
@@ -125,7 +127,43 @@ function renderGoalbar() {
 }
 
 /* =========================== 공통 조각 ==================================== */
-const trustBar = () => `<div class="trust"><span class="t-fact">FACT</span><span class="t-calc">CALCULATION</span><span class="t-ai">AI ADVICE</span></div>`;
+/* 신뢰 레이어 배지. AI가 실제로 동작할 때만 AI ADVICE 를 켠다.
+   (키가 없는데 AI ADVICE 를 띄우면 화면이 거짓말을 하게 된다) */
+const trustBar = () => `<div class="trust">
+  <span class="t-fact">FACT</span><span class="t-calc">CALCULATION</span>
+  ${S.aiEnabled() ? '<span class="t-ai">AI ADVICE</span>' : '<span class="chip">AI 미연결 · 규칙 기반</span>'}
+</div>`;
+
+/* ---------------------------------------------------------------------------
+ * AI 설명 채우기
+ *  · 규칙 기반 결과는 이미 화면에 있고, AI는 그 위에 "해석"만 얹는다.
+ *  · 키가 없거나 실패해도 화면은 완결된 상태를 유지한다.
+ *  · AI가 만든 문장에만 AI 배지를 붙여 출처를 구분한다.
+ * ------------------------------------------------------------------------- */
+async function fillAI(mountId, task, data) {
+  const box = document.getElementById(mountId);
+  if (!box) return;
+  if (!S.aiEnabled()) {
+    box.innerHTML = `<div class="src" style="margin-top:10px">AI 키가 설정되지 않아 규칙 기반 설명만 표시합니다.</div>`;
+    return;
+  }
+  box.innerHTML = `<div class="src" style="margin-top:10px"><span class="spin"></span> AI가 결과를 해석하는 중…</div>`;
+  try {
+    const r = await fetch('/api/ai', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task, data }),
+    });
+    const j = await r.json();
+    if (!r.ok || !j.text) throw new Error(j.message || 'empty');
+    box.innerHTML = `<div class="card" style="box-shadow:none;margin-top:12px;background:#fffdf8;border-color:#ffedd5">
+      <span class="chip" style="background:#ffedd5;color:#c2410c;font-weight:800">AI ADVICE</span>
+      <div style="margin-top:9px;font-size:13.5px;color:var(--tx);line-height:1.7">${esc(j.text)}</div>
+      <div class="src">계산·판정은 코드가 수행했고, 위 문장은 그 결과를 해석한 것입니다 · 모델 ${esc(j.model || 'Claude')}</div>
+    </div>`;
+  } catch (e) {
+    box.innerHTML = `<div class="src" style="margin-top:10px">AI 해석을 불러오지 못했습니다 (${esc(String(e.message).slice(0, 60))}). 위 규칙 기반 결과는 그대로 유효합니다.</div>`;
+  }
+}
 
 function sourceLine(src) {
   if (!src) return '';
@@ -154,6 +192,8 @@ function viewStep1(v) {
         <div style="font-size:13px;font-weight:800;color:var(--navy);margin-bottom:10px">왜 이렇게 판정했나요?</div>
         <div class="grid2" style="gap:8px">${r.checks.filter((c) => c.status !== 'na').map(checkChip).join('')}</div>
         ${r.amount.formula ? `<div class="note" style="margin-top:12px">🧮 ${esc(r.amount.formula)}</div>` : ''}
+        <button class="btn ghost sm" style="margin-top:10px" data-ai="${r.policy_id}">AI에게 이 판정 설명 듣기</button>
+        <div id="ai-${r.policy_id}"></div>
         ${sourceLine(r.source)}
       </div></td></tr>`;
   }).join('');
@@ -177,6 +217,21 @@ function viewStep1(v) {
     if (e.target.dataset.ck) return;
     const d = v.querySelector(`[data-detail="${tr.dataset.id}"]`);
     d.classList.toggle('hide');
+  }));
+
+  /* 판정 근거를 AI가 풀어서 설명 (요청할 때만 호출) */
+  v.querySelectorAll('[data-ai]').forEach((b) => b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const r = state.judged.find((x) => x.policy_id === b.dataset.ai);
+    b.disabled = true;
+    fillAI(`ai-${r.policy_id}`, 'explain_verdict', {
+      정책명: r.policy.name, 판정: r.label, 사유: r.reason,
+      예상활용액: r.amount.value, 계산식: r.amount.formula,
+      조건별_검토결과: r.checks.filter((c) => c.status !== 'na')
+        .map((c) => ({ 항목: c.label, 결과: c.status, 기준: c.fact, 내값: c.detail })),
+      사용자상황: { 만나이: koreanAge(state.profile.birth_ymd), 연소득: state.profile.annual_income,
+        거주지: state.profile.region_name, 무주택: !state.profile.is_homeowner },
+    });
   }));
   v.querySelectorAll('[data-ck]').forEach((c) => c.addEventListener('change', () => {
     c.checked ? state.selected.add(c.dataset.ck) : state.selected.delete(c.dataset.ck);
@@ -256,6 +311,7 @@ function viewStep2(v) {
         🧮 ${esc(bp.formula.requiredEquity)}<br>🧮 ${esc(bp.formula.additionalNeeded)}<br>🧮 ${esc(bp.formula.monthly)}
       </div>
     </div>
+    <div id="aiBlueprint"></div>
     ${disclaimer}
     <div style="display:flex;gap:10px;margin-top:18px">
       <button class="btn ghost" id="back1">정책 다시 고르기</button>
@@ -265,6 +321,16 @@ function viewStep2(v) {
 
   $('#back1').addEventListener('click', () => (location.hash = '#step1'));
   $('#go3').addEventListener('click', () => (location.hash = '#step3'));
+
+  /* 계산이 끝난 뒤 AI에게 "그래서 뭘 해야 하는지" 해석만 요청한다 */
+  fillAI('aiBlueprint', 'explain_blueprint', {
+    목표금액: bp.target, 정책금융_활용가능_예상액: bp.policyLoan,
+    정책혜택_예상액: bp.policyBenefit, 필요_자기자본: bp.requiredEquity,
+    현재_보유자산: bp.currentAsset, 추가로_모아야_하는_금액: bp.additionalNeeded,
+    권장_월저축액: bp.recommendedMonthly, 목표기간_개월: g.target_months,
+    적용정책: comb.applied.filter((a) => a.applied).map((a) => a.policy.name),
+    계산식: bp.formula,
+  });
 }
 
 /* ======================== STEP 3 · 시뮬레이션 ============================= */
@@ -500,7 +566,18 @@ function viewStep4(v) {
             <div class="bar" style="height:7px"><i style="width:${c.pct}%"></i></div></div>`).join('')}
         </div>
         ${rep.repeats.length ? `<div class="note" style="margin-top:14px">🔁 30일 내 3회 이상 반복: ${rep.repeats.slice(0, 6).map((r) => `${esc(r.name)}×${r.count}`).join(' · ')}</div>` : ''}
-      </div>`;
+      </div>
+      <div id="aiFintox"></div>`;
+
+    fillAI('aiFintox', 'explain_fintox', {
+      최근결제: { 가맹점: latest.merchant_raw, 금액: latest.amount, 분류: latest.category, 시각: `${latest.hour}시` },
+      위험점수: sc.score, 판정: sc.levelLabel,
+      월저축목표: target, 목표대비_비중_퍼센트: sc.goalSharePct,
+      점수_산출근거: sc.breakdown.map((b) => ({ 항목: b.label, 점수: b.point, 만점: b.max, 근거: b.fact })),
+      월간요약: { 총지출: rep.total, 야간비중: rep.night.pct, 업종미상비중: rep.unknownPct,
+        상위카테고리: rep.categories.slice(0, 3).map((c) => ({ 분류: c.cat, 금액: c.amount, 비중: c.pct })) },
+      제안가능한_공공혜택: rx.map((r) => ({ 제목: r.title, 절감예상: r.saving })),
+    });
   }
 
   function monthlyBudget() {

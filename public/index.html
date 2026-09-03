@@ -74,8 +74,8 @@
 </main>
 
 <script type="module">
-import { initStore, currentUser, getActiveGoal, getProfile, createGoal, signOut } from './js/store.js';
-import { parseGoal, GOAL_LABEL } from './js/goalparse.js';
+import { initStore, currentUser, getActiveGoal, getProfile, createGoal, signOut, aiEnabled } from './js/store.js';
+import { parseGoal, enhanceWithAI, GOAL_LABEL } from './js/goalparse.js';
 
 const $ = (s) => document.querySelector(s);
 let parsedGoal = null;
@@ -104,10 +104,23 @@ $('#go').addEventListener('click', analyze);
 $('#q').addEventListener('keydown', (e) => { if (e.key === 'Enter') analyze(); });
 $('#redo').addEventListener('click', () => { $('#parsed').classList.add('hide'); $('#q').focus(); });
 
-function analyze() {
+async function analyze() {
   const text = $('#q').value.trim();
   if (!text) { $('#q').focus(); return; }
+
+  /* 1) 규칙 파서가 먼저 결과를 낸다 (AI가 없어도 서비스가 멈추지 않는다) */
   parsedGoal = parseGoal(text);
+  render();
+
+  /* 2) AI 키가 있으면 규칙 파서가 놓친 값만 보정한다 (기존 값은 덮어쓰지 않음) */
+  if (aiEnabled()) {
+    $('#askMore').innerHTML = `<div class="note"><span class="spin"></span> AI가 문장을 다시 확인하는 중…</div>`;
+    parsedGoal = await enhanceWithAI(text, parsedGoal);
+    render();
+  }
+}
+
+function render() {
   const g = parsedGoal;
   const won = (n) => n ? (n >= 100000000 ? (n / 100000000).toFixed(n % 100000000 ? 1 : 0) + '억 원' : Math.round(n / 10000).toLocaleString() + '만 원') : '—';
 
@@ -121,9 +134,13 @@ function analyze() {
   const missing = [];
   if (!g.target_amount) missing.push('목표 금액');
   if (!g.target_months) missing.push('목표 기간');
-  $('#askMore').innerHTML = missing.length
+  const src = g.ai_used
+    ? '<span class="chip" style="background:#ffedd5;color:#c2410c">AI 보정 적용</span>'
+    : `<span class="chip">${aiEnabled() ? '규칙 파서로 충분' : '규칙 파서 · AI 미연결'}</span>`;
+  $('#askMore').innerHTML = (missing.length
     ? `<div class="warn">${missing.join('과 ')}을(를) 알 수 없었습니다. 다음 화면에서 직접 입력해 주세요.</div>`
-    : `<div class="note">💡 정확한 정책 판정을 위해 나이·소득·거주지 정보가 필요합니다. ${user ? '가입 시 입력한 정보를 사용합니다.' : '회원가입에서 한 번만 입력하면 됩니다.'}</div>`;
+    : `<div class="note">💡 정확한 정책 판정을 위해 나이·소득·거주지 정보가 필요합니다. ${user ? '가입 시 입력한 정보를 사용합니다.' : '회원가입에서 한 번만 입력하면 됩니다.'}</div>`)
+    + `<div style="margin-top:8px">${src}</div>`;
   $('#parsed').classList.remove('hide');
   $('#parsed').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
