@@ -99,6 +99,16 @@ export function simulate(bp, goal, monthlySaving) {
   if (!monthlySaving || monthlySaving <= 0) {
     return { monthsNeeded: Infinity, gapMonths: Infinity, level: 'hard', label: '계산 불가', message: '월 저축액을 입력해 주세요.' };
   }
+  /* 보유자산 + 정책금융만으로 이미 목표에 닿는 경우 — 저축 기간이 0이다 */
+  if (bp.additionalNeeded <= 0) {
+    return {
+      monthsNeeded: 0, gapMonths: -target, level: 'ok', ready: true,
+      label: '지금 실행 가능',
+      message: '추가 저축 없이 현재 자산과 정책금융만으로 목표 금액에 대응할 수 있습니다.',
+      formula: `필요 자기자본 ${money(bp.requiredEquity)} ≤ 보유 ${money(bp.currentAsset)} — 추가 저축 불필요`,
+    };
+  }
+
   const monthsNeeded = Math.ceil(bp.additionalNeeded / monthlySaving);
   const gap = monthsNeeded - target;
 
@@ -139,7 +149,21 @@ export function tradeoff(bp, goal, monthlySaving) {
  *      savingProgress    실제 돈이 얼마나 모였는가
  *      readiness         실행에 필요한 준비가 얼마나 됐는가
  * ------------------------------------------------------------------------- */
-export function progress(goal, bp, checklist) {
+/* 시작일 + N개월 → D-Day.
+ * 설계서 8p: 월 저축액을 올리면 D-Day가 실제로 당겨져야 한다.
+ * 그래서 '목표 D-Day'(기간 기준)와 '예상 D-Day'(저축 속도 기준)를 나눠서 계산한다. */
+export function ddayFrom(startedOn, months) {
+  const d = new Date(startedOn || Date.now());
+  d.setMonth(d.getMonth() + Math.round(months || 0));
+  const days = Math.ceil((d - new Date()) / 86400000);
+  return {
+    date: d, days,
+    label: days >= 0 ? `D-${days}` : `D+${Math.abs(days)}`,
+    ymd: d.toISOString().slice(0, 10),
+  };
+}
+
+export function progress(goal, bp, checklist, monthsNeeded) {
   const equityNeeded = Math.max(1, bp.requiredEquity);
   const savedNow = Math.min(bp.currentAsset, equityNeeded);
   const savingPct = Math.round((savedNow / equityNeeded) * 100);
@@ -148,17 +172,23 @@ export function progress(goal, bp, checklist) {
   const done = checklist.filter((c) => c.is_done).length;
   const readinessPct = Math.round((done / total) * 100);
 
-  const start = new Date(goal.started_on || Date.now());
-  const dday = new Date(start);
-  dday.setMonth(dday.getMonth() + (goal.target_months || 0));
-  const daysLeft = Math.ceil((dday - new Date()) / 86400000);
+  const target = ddayFrom(goal.started_on, goal.target_months);
+  const daysLeft = target.days;
   const elapsed = Math.max(0, (goal.target_months || 0) - Math.ceil(daysLeft / 30));
+
+  /* 현재 저축 속도로 갔을 때 실제로 도달하는 시점 */
+  const projected = (monthsNeeded && isFinite(monthsNeeded))
+    ? ddayFrom(goal.started_on, monthsNeeded) : null;
 
   return {
     savingPct, savedNow, equityNeeded,
     readinessPct, done, total,
-    daysLeft, dday, elapsedMonths: elapsed,
-    ddayLabel: daysLeft > 0 ? `D-${daysLeft}` : `D+${Math.abs(daysLeft)}`,
+    daysLeft, dday: target.date, elapsedMonths: elapsed,
+    ddayLabel: target.label,
+    targetDday: target,
+    projectedDday: projected,
+    /* 예상 시점이 목표보다 며칠 늦는지 (+ 지연 / − 단축) */
+    ddayGapDays: projected ? projected.days - target.days : 0,
     /* 목표 저축 대비 실제 진도 (앞서가는지 뒤처지는지) */
     onTrack: savingPct >= Math.round((elapsed / Math.max(1, goal.target_months)) * 100),
     formula: `보유 ${money(savedNow)} ÷ 필요 자기자본 ${money(equityNeeded)} = ${savingPct}%`,

@@ -4,7 +4,7 @@
 <body><pre id="out">running…</pre>
 <script type="module">
 import { judgeAll, resolveCombination, filterByGoal, koreanAge } from './js/rules.js';
-import { buildBlueprint, feasibility, simulate, progress, money } from './js/calc.js';
+import { buildBlueprint, feasibility, simulate, progress, money, ddayFrom } from './js/calc.js';
 import { parseBulk, scoreTransaction, monthlyReport, prescribe, median } from './js/fintox.js';
 
 const L = [];
@@ -147,6 +147,47 @@ log(`  실행 준비도 ${pr.readinessPct}% (${pr.done}/${pr.total})`);
 log(`  ${pr.ddayLabel} · 남은 ${pr.daysLeft}일`);
 assert('준비도 33%', pr.readinessPct === 33, pr.readinessPct);
 assert('저축 진척률 계산됨', pr.savingPct === 30, pr.savingPct);
+
+/* ===================== D-Day 연동 (설계서 8p 시연 포인트) ===================== */
+log('\n=== D-Day 연동 ===');
+const dSlow = simulate(bp1, g1, 300000);
+const dBase = simulate(bp1, g1, 583000);
+const dFast = simulate(bp1, g1, 700000);
+const pSlow = progress(g1, bp1, cl, dSlow.monthsNeeded);
+const pBase = progress(g1, bp1, cl, dBase.monthsNeeded);
+const pFast = progress(g1, bp1, cl, dFast.monthsNeeded);
+log(`  월 30만  → ${pSlow.projectedDday.label} (${dSlow.monthsNeeded}개월)`);
+log(`  월 58.3만 → ${pBase.projectedDday.label} (${dBase.monthsNeeded}개월)`);
+log(`  월 70만  → ${pFast.projectedDday.label} (${dFast.monthsNeeded}개월)`);
+assert('저축액을 올리면 D-Day가 당겨진다', pFast.projectedDday.days < pBase.projectedDday.days,
+  `${pFast.projectedDday.days} vs ${pBase.projectedDday.days}`);
+assert('저축액을 낮추면 D-Day가 밀린다', pSlow.projectedDday.days > pBase.projectedDday.days,
+  `${pSlow.projectedDday.days} vs ${pBase.projectedDday.days}`);
+assert('목표 D-Day는 저축액과 무관하게 고정', pSlow.targetDday.days === pFast.targetDday.days,
+  `${pSlow.targetDday.days} vs ${pFast.targetDday.days}`);
+
+/* 목표 금액 슬라이더 — 페르소나2 시연 동선 (6억 🔴 → 5억 🟢) */
+log('\n=== 목표 금액 슬라이더 (이지은) ===');
+for (const amt of [700000000, 600000000, 500000000]) {
+  const gx = { ...g2, target_amount: amt };
+  const jx = judgeAll(filterByGoal(POLICIES, 'purchase'), p2, gx, TODAY);
+  const cx = resolveCombination(jx.filter(r => r.verdict === 'eligible' && r.policy.category === 'purchase_loan'), db.exclusive_groups);
+  const bx = buildBlueprint(gx, cx.applied);
+  const fx = feasibility(gx, bx, 2000000);
+  const sx = simulate(bx, gx, 2000000);
+  log(`  ${(amt/100000000)}억 → ${fx.label} · ${sx.ready ? '지금 실행 가능' : ddayFrom(gx.started_on, sx.monthsNeeded).label}`);
+}
+const g5 = { ...g2, target_amount: 500000000 };
+const j5 = judgeAll(filterByGoal(POLICIES, 'purchase'), p2, g5, TODAY);
+const c5 = resolveCombination(j5.filter(r => r.verdict === 'eligible' && r.policy.category === 'purchase_loan'), db.exclusive_groups);
+const b5 = buildBlueprint(g5, c5.applied);
+assert('5억으로 낮추면 달성 가능권', feasibility(g5, b5, 2000000).level === 'ok', feasibility(g5, b5, 2000000).level);
+assert('추가저축 0이면 지금 실행 가능', simulate(b5, g5, 2000000).ready === true, simulate(b5, g5, 2000000).ready);
+
+const g7 = { ...g2, target_amount: 700000000 };
+const j7 = judgeAll(filterByGoal(POLICIES, 'purchase'), p2, g7, TODAY);
+const bogeum7 = j7.find(r => r.policy_id === 'bogeumjari');
+assert('7억이면 보금자리론 주택가격 상한 초과로 판정 변경', bogeum7.verdict === 'not_eligible', bogeum7.verdict);
 
 log(`\n${fails === 0 ? '🟢 전체 통과' : `🔴 실패 ${fails}건`}`);
 document.getElementById('out').textContent = L.join('\n');

@@ -4,7 +4,7 @@
  * ========================================================================== */
 import * as S from './store.js';
 import { judgeAll, resolveCombination, filterByGoal, VERDICT, CODE, koreanAge } from './rules.js';
-import { buildBlueprint, feasibility, simulate, tradeoff, progress, money, monthlyPayment } from './calc.js';
+import { buildBlueprint, feasibility, simulate, tradeoff, progress, money, monthlyPayment, ddayFrom } from './calc.js';
 import * as FT from './fintox.js';
 import * as CR from './credit.js';
 import { GOAL_LABEL } from './goalparse.js';
@@ -336,78 +336,139 @@ function viewStep2(v) {
 /* ======================== STEP 3 · 시뮬레이션 ============================= */
 function viewStep3(v) {
   const g = state.goal;
-  /* 비교 대상은 '대출' 정책만. 적금·지원금은 목표 자금을 대체하는 성격이 아니라
-     함께 적용되는 항목이므로 아래에 따로 표시한다. */
-  const picked = state.judged.filter((r) => state.selected.has(r.policy_id));
-  const candidates = picked.filter((r) => r.policy.finance.type === 'loan');
-  const companions = picked.filter((r) => r.policy.finance.type !== 'loan');
+  const picked = [...state.selected];
+
+  /* 탐색용 목표 금액 — 저장하지 않는다. 확정하려면 아래 버튼을 눌러야 한다. */
+  let simTarget = state.simTarget || g.target_amount;
   let saving = g.monthly_saving || 0;
 
-  const compare = candidates.map((r) => {
-    const comb = resolveCombination([r], state.groups);
-    const bp = buildBlueprint(g, comb.applied);
-    const f = r.policy.finance || {};
-    return { r, bp, rate: f.rate_min != null ? `${(f.rate_min * 100).toFixed(1)}~${(f.rate_max * 100).toFixed(1)}%` : '—',
-      pay: f.type === 'loan'
-        ? monthlyPayment(bp.policyLoan, (f.rate_min + f.rate_max) / 2, f.term_years, f.repay_type)
-        : { value: 0 } };
-  });
+  /* 목표금액 / 월저축액을 바꿨을 때 전체를 다시 계산한다.
+     목표금액이 바뀌면 정책 판정 자체가 달라진다(예: 주택가격 상한 조건). */
+  function planFor(targetAmount, monthlySaving) {
+    const gg = { ...g, target_amount: targetAmount };
+    const judged = judgeAll(filterByGoal(state.policies, g.goal_type), state.profile, gg, new Date());
+    const chosen = judged.filter((r) => picked.includes(r.policy_id));
+    const comb = resolveCombination(chosen, state.groups);
+    const bp = buildBlueprint(gg, comb.applied);
+    const sim = simulate(bp, gg, monthlySaving);
+    const fe = feasibility(gg, bp, monthlySaving);
+    return {
+      gg, judged, comb, bp, sim, fe,
+      dday: ddayFrom(g.started_on, sim.monthsNeeded),
+      targetDday: ddayFrom(g.started_on, g.target_months),
+    };
+  }
 
-  if (!saving) saving = compare.length ? compare[0].bp.recommendedMonthly : 500000;
+  const base = planFor(g.target_amount, saving || 1);
+  if (!saving) saving = Math.max(100000, base.bp.recommendedMonthly);
+
+  const step = g.target_amount >= 100000000 ? 10000000 : 1000000;
+  const tMin = Math.max(step, Math.round(g.target_amount * 0.4 / step) * step);
+  const tMax = Math.round(g.target_amount * 1.6 / step) * step;
 
   v.append(el(`<section class="card">
     <div class="card-h"><div class="card-t">STEP 3 · 저축 계획 시뮬레이션</div><span class="tag">실시간 계산</span></div>
-    <p class="card-sub">고른 정책을 나란히 비교하고, 월 저축액을 바꿔가며 <b>최종으로 실행할 정책 하나</b>를 확정합니다.</p>
+    <p class="card-sub">목표 금액과 월 저축액을 움직이면 <b>도달 시점(D-Day)과 정책 판정이 즉시 다시 계산됩니다.</b>
+      비교해 보고 실행할 정책 하나를 확정하세요.</p>
 
-    <div class="grid2" id="cmp">${compare.map((c) => `
-      <div class="card" style="box-shadow:none;cursor:pointer" data-pick="${c.r.policy_id}">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-          <div style="font-size:15px;font-weight:800;color:var(--navy)">${esc(c.r.policy.short_name)}</div>
-          <span class="badge ${VERDICT[c.r.verdict].tone}">${c.r.dot} ${c.r.label}</span>
-        </div>
-        <div class="grid3" style="margin-top:12px;gap:8px">
-          <div class="stat" style="padding:11px"><div class="l">활용액</div><div class="v" style="font-size:15px">${money(c.bp.policyLoan || c.r.amount.value)}</div></div>
-          <div class="stat" style="padding:11px"><div class="l">금리</div><div class="v" style="font-size:15px">${c.rate}</div></div>
-          <div class="stat" style="padding:11px"><div class="l">필요 자기자본</div><div class="v" style="font-size:15px">${money(c.bp.requiredEquity)}</div></div>
-        </div>
-        ${c.pay.value ? `<div class="src">참고 · ${c.pay.label} 약 ${num(c.pay.value)}원 · ${esc(c.pay.note)} (평균금리 가정)</div>` : ''}
-        <button class="btn sm full ${state.finalId === c.r.policy_id ? '' : 'ghost'}" style="margin-top:12px" data-final="${c.r.policy_id}">
-          ${state.finalId === c.r.policy_id ? '✓ 확정됨' : '이 정책으로 확정'}</button>
-      </div>`).join('') || '<div class="empty" style="grid-column:1/-1">STEP 1에서 대출 정책을 선택하면 여기서 비교할 수 있습니다.</div>'}</div>
+    <div id="explore"></div>
 
-    ${companions.length ? `<div class="note" style="margin-top:12px">
-      🧩 함께 적용되는 정책: ${companions.map((c) => `${esc(c.policy.short_name)}(${c.amount.value ? money(c.amount.value) : '혜택형'})`).join(' · ')}
-      <div style="font-size:11px;font-weight:500;margin-top:4px;opacity:.85">적금·지원금·할인은 대출과 성격이 달라 목표 자금에 합산됩니다. 위 비교는 대출 정책끼리만 합니다.</div>
-    </div>` : ''}
-
-    <div class="grid2" style="margin-top:20px;align-items:start">
+    <div class="grid2" style="align-items:start;margin-top:4px">
       <div class="card" style="box-shadow:none">
         <div class="mini">WHAT-IF SIMULATOR</div>
-        <div style="font-size:21px;font-weight:800;color:var(--navy);margin:6px 0 8px">월 저축액을 바꿔보세요</div>
-        <div style="font-size:13px;color:var(--muted);margin-bottom:20px">목표를 포기하는 대신 어느 변수를 바꾸면 현실성이 높아지는지 계산합니다.</div>
-        <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted)"><span>10만 원</span><span>300만 원</span></div>
-        <input type="range" id="sl" min="100000" max="3000000" step="10000" value="${saving}" style="width:100%;accent-color:var(--blue);margin:6px 0 14px">
-        <div class="stat" style="text-align:left"><div class="l">월 저축액</div><div class="v" style="font-size:30px" id="slv">${num(saving)}원</div></div>
-        <div id="simres" style="margin-top:14px"></div>
+
+        <div style="margin-top:14px">
+          <div style="display:flex;justify-content:space-between;align-items:baseline">
+            <label style="font-size:12px;font-weight:700;color:var(--muted)">목표 금액</label>
+            <b id="tv" style="font-size:17px;color:var(--navy)">${money(simTarget)}</b>
+          </div>
+          <input type="range" id="tSl" min="${tMin}" max="${tMax}" step="${step}" value="${simTarget}"
+            style="width:100%;accent-color:var(--navy);margin-top:6px">
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted2)">
+            <span>${money(tMin)}</span><span>${money(tMax)}</span></div>
+        </div>
+
+        <div style="margin-top:18px">
+          <div style="display:flex;justify-content:space-between;align-items:baseline">
+            <label style="font-size:12px;font-weight:700;color:var(--muted)">월 저축액</label>
+            <b id="sv" style="font-size:17px;color:var(--navy)">${num(saving)}원</b>
+          </div>
+          <input type="range" id="sSl" min="100000" max="3000000" step="10000" value="${saving}"
+            style="width:100%;accent-color:var(--blue);margin-top:6px">
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted2)">
+            <span>10만 원</span><span>300만 원</span></div>
+        </div>
+
+        <div id="ddayBox" style="margin-top:18px"></div>
+        <div id="simres" style="margin-top:12px"></div>
       </div>
-      <div id="plans"></div>
+
+      <div id="rightCol"></div>
+    </div>
+
+    <div style="margin-top:20px">
+      <div class="mini" style="margin-bottom:8px">정책별 비교 · 실행할 하나를 확정하세요</div>
+      <div id="cmp" class="grid2"></div>
+      <div id="companion"></div>
     </div>
     ${disclaimer}
   </section>`));
 
-  const redraw = () => {
-    const val = Number($('#sl').value);
-    $('#slv').textContent = num(val) + '원';
-    const { bp } = currentPlan();
-    const sim = simulate(bp, g, val);
-    const tone = { ok: 'green', tight: 'yellow', hard: 'red' }[sim.level];
-    $('#simres').innerHTML = `<div class="${sim.level === 'ok' ? 'note' : 'warn'}">
-      <b>${sim.label} · 약 ${sim.monthsNeeded}개월 필요</b><br>${esc(sim.message)}
-      <div style="font-size:11px;opacity:.8;margin-top:6px">🧮 ${esc(sim.formula)}</div></div>`;
-    const t = tradeoff(bp, g, val);
-    const fe = feasibility(g, bp, val);
-    $('#plans').innerHTML = `
+  /* ------------------------------ 렌더 ---------------------------------- */
+  function redraw() {
+    const cur = planFor(simTarget, saving);
+    const changed = simTarget !== g.target_amount;
+
+    $('#tv').textContent = money(simTarget);
+    $('#sv').textContent = num(saving) + '원';
+
+    $('#explore').innerHTML = changed ? `
+      <div class="warn" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+        <span>🔍 탐색 중 · 목표를 <b>${money(g.target_amount)} → ${money(simTarget)}</b>으로 가정하고 계산했습니다. 아직 저장되지 않았습니다.</span>
+        <span style="display:flex;gap:8px">
+          <button class="btn ghost sm" id="resetTarget">원래대로</button>
+          <button class="btn sm" id="applyTarget">이 금액으로 목표 변경</button>
+        </span>
+      </div>` : '';
+
+    /* D-Day — 목표 기간 기준과 저축 속도 기준을 나란히 */
+    const gapDays = cur.dday.days - cur.targetDday.days;
+    const tone = gapDays > 0 ? 'var(--red)' : gapDays < 0 ? 'var(--green)' : 'var(--blue)';
+    $('#ddayBox').innerHTML = `
+      <div class="stat" style="text-align:left;background:#fff;border-color:${tone}">
+        <div class="l">예상 도달 시점 (현재 저축 속도 기준)</div>
+        <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-top:4px">
+          <div style="font-size:${cur.sim.ready ? 24 : 32}px;font-weight:800;color:${cur.sim.ready ? 'var(--green)' : tone}">
+            ${cur.sim.ready ? '지금 실행 가능' : esc(cur.dday.label)}</div>
+          <div style="font-size:12px;color:var(--muted)">
+            ${cur.sim.ready ? '추가 저축 없이 목표 금액에 대응 가능' : `${esc(cur.dday.ymd)} · 약 ${cur.sim.monthsNeeded}개월`}</div>
+        </div>
+        <div class="f" style="margin-top:6px">
+          목표 D-Day ${esc(cur.targetDday.label)} (${esc(cur.targetDday.ymd)}) 대비
+          <b style="color:${cur.sim.ready ? 'var(--green)' : tone}">${cur.sim.ready
+            ? `${cur.targetDday.days}일 앞당김`
+            : gapDays === 0 ? '동일' : gapDays > 0 ? `${gapDays}일 지연` : `${Math.abs(gapDays)}일 단축`}</b>
+        </div>
+      </div>`;
+
+    $('#simres').innerHTML = `<div class="${cur.sim.level === 'ok' ? 'note' : 'warn'}">
+      <b>${esc(cur.sim.label)}</b> · ${esc(cur.sim.message)}
+      <div style="font-size:11px;opacity:.85;margin-top:6px">🧮 ${esc(cur.sim.formula)}</div></div>`;
+
+    /* 오른쪽: 달성 가능성 + Plan A/B + 판정 변화 */
+    const t = tradeoff(cur.bp, cur.gg, saving);
+    const diffs = cur.judged
+      .map((r) => ({ r, was: (base.judged.find((b) => b.policy_id === r.policy_id) || {}).verdict }))
+      .filter((d) => d.was && d.was !== d.r.verdict);
+
+    $('#rightCol').innerHTML = `
       <div class="card" style="box-shadow:none">
+        <div class="mini">FEASIBILITY</div>
+        <div style="font-size:16px;font-weight:800;color:var(--navy);margin:6px 0 6px">${esc(cur.fe.label)}</div>
+        <div style="font-size:13px;color:var(--muted);line-height:1.6">${esc(cur.fe.message)}</div>
+        <div class="note" style="margin-top:10px">🧮 ${esc(cur.fe.formula)}</div>
+      </div>
+      <div class="card" style="box-shadow:none;margin-top:14px">
         <div class="mini">GOAL TRADE-OFF</div>
         <div style="font-size:17px;font-weight:800;color:var(--navy);margin:4px 0 12px">Plan A / Plan B</div>
         <div class="grid2">
@@ -417,33 +478,90 @@ function viewStep3(v) {
             <div style="font-size:12px;color:var(--muted);line-height:1.5">${esc(p.detail)}</div></div>`).join('')}
         </div>
       </div>
-      <div class="card" style="box-shadow:none;margin-top:14px">
-        <div class="mini">FEASIBILITY</div>
-        <div style="font-size:15px;font-weight:800;color:var(--navy);margin:6px 0 6px">${esc(fe.label)}</div>
-        <div style="font-size:13px;color:var(--muted);line-height:1.6">${esc(fe.message)}</div>
-        <div class="note" style="margin-top:10px">🧮 ${esc(fe.formula)}</div>
+      ${diffs.length ? `<div class="card" style="box-shadow:none;margin-top:14px;background:var(--sky);border-color:var(--blue-bd)">
+        <div class="mini">판정이 바뀌었습니다</div>
+        <div style="display:grid;gap:7px;margin-top:8px">
+          ${diffs.map((d) => `<div style="font-size:12.5px">
+            <b>${esc(d.r.policy.short_name)}</b>
+            <span class="badge ${VERDICT[d.was].tone}">${VERDICT[d.was].label}</span> →
+            <span class="badge ${VERDICT[d.r.verdict].tone}">${d.r.dot} ${d.r.label}</span>
+            <div style="color:var(--muted);margin-top:2px">${esc(d.r.reason)}</div></div>`).join('')}
+        </div>
+        <div class="src">목표 금액을 바꾸면 주택가격·보증금 상한 조건에 걸리는 정책이 달라집니다.</div>
+      </div>` : ''}`;
+
+    /* 정책 비교 카드 */
+    const cand = cur.judged.filter((r) => picked.includes(r.policy_id) && r.policy.finance.type === 'loan');
+    const comp = cur.judged.filter((r) => picked.includes(r.policy_id) && r.policy.finance.type !== 'loan');
+
+    $('#cmp').innerHTML = cand.map((r) => {
+      const one = resolveCombination([r], state.groups);
+      const bp1 = buildBlueprint(cur.gg, one.applied);
+      const f = r.policy.finance;
+      const pay = monthlyPayment(bp1.policyLoan, (f.rate_min + f.rate_max) / 2, f.term_years, f.repay_type);
+      return `<div class="card" style="box-shadow:none">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+          <div style="font-size:15px;font-weight:800;color:var(--navy)">${esc(r.policy.short_name)}</div>
+          <span class="badge ${VERDICT[r.verdict].tone}">${r.dot} ${r.label}</span>
+        </div>
+        <div class="grid3" style="margin-top:12px;gap:8px">
+          <div class="stat" style="padding:11px"><div class="l">활용액</div><div class="v" style="font-size:15px">${money(bp1.policyLoan)}</div></div>
+          <div class="stat" style="padding:11px"><div class="l">금리</div><div class="v" style="font-size:15px">${(f.rate_min * 100).toFixed(1)}~${(f.rate_max * 100).toFixed(1)}%</div></div>
+          <div class="stat" style="padding:11px"><div class="l">필요 자기자본</div><div class="v" style="font-size:15px">${money(bp1.requiredEquity)}</div></div>
+        </div>
+        ${pay.value ? `<div class="src">참고 · ${esc(pay.label)} 약 ${num(pay.value)}원 · ${esc(pay.note)}</div>` : ''}
+        <button class="btn sm full ${state.finalId === r.policy_id ? '' : 'ghost'}" style="margin-top:12px" data-final="${r.policy_id}">
+          ${state.finalId === r.policy_id ? '✓ 확정됨' : '이 정책으로 확정'}</button>
       </div>`;
-  };
+    }).join('') || '<div class="empty" style="grid-column:1/-1">STEP 1에서 대출 정책을 선택하면 여기서 비교할 수 있습니다.</div>';
 
-  $('#sl')?.addEventListener('input', redraw);
-  $('#sl')?.addEventListener('change', async () => {
-    const val = Number($('#sl').value);
-    const { bp } = currentPlan();
-    const sim = simulate(bp, g, val);
-    await S.updateGoal(g.id, { monthly_saving: val });
-    g.monthly_saving = val;
-    await S.addSimulation(g.id, { monthly_saving: val, months_needed: sim.monthsNeeded, gap_months: sim.gapMonths, plan: sim.gapMonths > 0 ? 'B' : 'A' });
+    $('#companion').innerHTML = comp.length ? `<div class="note" style="margin-top:12px">
+      🧩 함께 적용되는 정책: ${comp.map((c) => `${esc(c.policy.short_name)}(${c.amount.value ? money(c.amount.value) : '혜택형'})`).join(' · ')}
+      <div style="font-size:11px;font-weight:500;margin-top:4px;opacity:.85">적금·지원금·할인은 대출과 성격이 달라 목표 자금에 합산됩니다. 위 비교는 대출 정책끼리만 합니다.</div>
+    </div>` : '';
+
+    bindDynamic();
+  }
+
+  /* 재렌더되는 영역의 이벤트 재바인딩 */
+  function bindDynamic() {
+    $('#applyTarget')?.addEventListener('click', async () => {
+      await S.updateGoal(g.id, { target_amount: simTarget });
+      g.target_amount = simTarget;
+      state.simTarget = null;
+      rejudge();
+      route();
+    });
+    $('#resetTarget')?.addEventListener('click', () => {
+      simTarget = g.target_amount;
+      state.simTarget = null;
+      $('#tSl').value = simTarget;
+      redraw();
+    });
+    document.querySelectorAll('[data-final]').forEach((b) => b.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      state.finalId = b.dataset.final;
+      await S.finalizePolicy(g.id, state.finalId);
+      await S.toggleChecklist(g.id, 'eligibility', true);
+      state.checklist = await S.getChecklist(g.id);
+      location.hash = '#step4';
+    }));
+  }
+
+  /* 슬라이더 — 드래그 중에는 화면만, 놓았을 때 저장 */
+  $('#tSl').addEventListener('input', (e) => { simTarget = Number(e.target.value); state.simTarget = simTarget; redraw(); });
+  $('#sSl').addEventListener('input', (e) => { saving = Number(e.target.value); redraw(); });
+  $('#sSl').addEventListener('change', async () => {
+    const cur = planFor(simTarget, saving);
+    await S.updateGoal(g.id, { monthly_saving: saving });
+    g.monthly_saving = saving;
+    await S.addSimulation(g.id, {
+      monthly_saving: saving, months_needed: cur.sim.monthsNeeded,
+      gap_months: cur.sim.gapMonths, plan: cur.sim.gapMonths > 0 ? 'B' : 'A',
+    });
   });
-  if (compare.length) redraw();
 
-  v.querySelectorAll('[data-final]').forEach((b) => b.addEventListener('click', async (e) => {
-    e.stopPropagation();
-    state.finalId = b.dataset.final;
-    await S.finalizePolicy(g.id, state.finalId);
-    await S.toggleChecklist(g.id, 'eligibility', true);
-    state.checklist = await S.getChecklist(g.id);
-    location.hash = '#step4';
-  }));
+  redraw();
 }
 
 /* ======================== STEP 4 · FinTox ================================= */
@@ -662,9 +780,9 @@ function viewStep5(v) {
 function viewDashboard(v) {
   const g = state.goal;
   const { bp } = currentPlan();
-  const pr = progress(g, bp, state.checklist);
-  const finalPolicy = state.policies.find((p) => p.policy_id === state.finalId);
   const sim = simulate(bp, g, g.monthly_saving || bp.recommendedMonthly);
+  const pr = progress(g, bp, state.checklist, sim.monthsNeeded);
+  const finalPolicy = state.policies.find((p) => p.policy_id === state.finalId);
 
   const next = !state.selected.size ? ['받을 수 있는 정책을 골라 주세요', '#step1']
     : !state.finalId ? ['시뮬레이션에서 실행할 정책을 확정해 주세요', '#step3']
@@ -675,8 +793,14 @@ function viewDashboard(v) {
     <div class="card-h">
       <div><div class="mini">MY GOAL</div>
         <div class="card-t" style="margin-top:4px">${esc(GOAL_LABEL[g.goal_type] || '목표')} · ${money(g.target_amount)}</div></div>
-      <div style="text-align:right"><div style="font-size:26px;font-weight:800;color:var(--navy)">${pr.ddayLabel}</div>
-        <div style="font-size:11px;color:var(--muted)">목표 ${g.target_months}개월 · 남은 ${pr.daysLeft}일</div></div>
+      <div style="text-align:right">
+        <div style="font-size:26px;font-weight:800;color:${sim.ready ? 'var(--green)' : pr.ddayGapDays > 0 ? 'var(--red)' : 'var(--navy)'}">
+          ${sim.ready ? '지금 실행 가능' : (pr.projectedDday ? pr.projectedDday.label : pr.ddayLabel)}</div>
+        <div style="font-size:11px;color:var(--muted)">
+          ${sim.ready ? '추가 저축 불필요' : `예상 도달 · 목표 ${pr.ddayLabel} 대비
+            ${pr.ddayGapDays === 0 ? '동일' : pr.ddayGapDays > 0 ? `${pr.ddayGapDays}일 지연` : `${Math.abs(pr.ddayGapDays)}일 단축`}`}
+        </div>
+      </div>
     </div>
 
     <div class="grid2" style="margin-top:6px">
