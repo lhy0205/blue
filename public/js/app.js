@@ -6,6 +6,7 @@ import * as S from './store.js';
 import { judgeAll, resolveCombination, filterByGoal, VERDICT, CODE, koreanAge } from './rules.js';
 import { buildBlueprint, feasibility, simulate, tradeoff, progress, money, monthlyPayment } from './calc.js';
 import * as FT from './fintox.js';
+import * as CR from './credit.js';
 import { GOAL_LABEL } from './goalparse.js';
 import { regionName } from './regions.js';
 
@@ -39,10 +40,14 @@ async function boot() {
   state.goal = await S.getActiveGoal();
   if (!state.goal) { location.replace('./index.html'); return; }
 
-  const db = await (await fetch('./data/policies.json')).json();
+  const [db, mvno] = await Promise.all([
+    (await fetch('./data/policies.json')).json(),
+    (await fetch('./data/mvno.json')).json(),
+  ]);
   state.policies = db.policies;
   state.groups = db.exclusive_groups;
   state.meta = db.meta;
+  state.mvno = mvno;
 
   const saved = await S.getGoalPolicies(state.goal.id);
   saved.forEach((r) => state.selected.add(r.policy_id));
@@ -95,7 +100,8 @@ function route() {
   v.innerHTML = '';
   ({
     dashboard: viewDashboard, step1: viewStep1, step2: viewStep2, step3: viewStep3,
-    step4: viewStep4, step5: viewStep5, history: viewHistory, policies: viewPolicies, mypage: viewMypage,
+    step4: viewStep4, step5: viewStep5, credit: viewCredit,
+    history: viewHistory, policies: viewPolicies, mypage: viewMypage,
   }[hash] || viewDashboard)(v);
   window.scrollTo(0, 0);
 }
@@ -395,11 +401,22 @@ function viewStep4(v) {
       ${state.txs.length ? `<button class="btn ghost" id="clear">내역 비우기</button>` : ''}
     </div>
     <div id="ftres" style="margin-top:20px"></div>
+
+    <div class="note" style="margin-top:20px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+      <span>${state.finalId
+        ? '↓ 최종 점검: STEP 5 실행 로드맵에서 준비도와 신청 일정을 확인하세요'
+        : '먼저 STEP 3에서 실행할 정책을 확정하면 실행 로드맵이 열립니다'}</span>
+      <a class="btn sm" href="${state.finalId ? '#step5' : '#step3'}">
+        ${state.finalId ? 'STEP 5 실행 로드맵으로 →' : 'STEP 3으로 돌아가기 →'}</a>
+    </div>
+    <div class="src" style="margin-top:10px">
+      통신비·보험료 같은 성실납부 실적이 있으면 <a href="#credit">신용 빌드업</a>에서 평가사 제출자료를 만들 수 있습니다.
+    </div>
   </section>`));
 
   $('#sample').addEventListener('click', async () => {
     const txt = await (await fetch('./data/dummy_tx.txt')).text();
-    $('#paste').value = txt.split('\n').slice(0, 40).join('\n');
+    $('#paste').value = txt.trim();   // 통신비·보험료 자동이체까지 포함해야 신용 빌드업이 동작한다
   });
   $('#clear')?.addEventListener('click', () => { alert('로컬 모드에서는 브라우저 저장소를 비우면 초기화됩니다.'); });
 
@@ -524,7 +541,8 @@ function viewStep5(v) {
       <div class="bar lg"><i style="width:${pr.readinessPct}%"></i></div>
       <div style="display:grid;gap:9px;margin-top:18px" id="cl">
         ${state.checklist.map((c) => `<label class="check ${c.is_done ? 'on' : ''}" data-k="${c.item_key}">
-          <input type="checkbox" ${c.is_done ? 'checked' : ''}><span>${esc(c.label)}</span></label>`).join('')}
+          <input type="checkbox" ${c.is_done ? 'checked' : ''}><span style="flex:1">${esc(c.label)}</span>
+          <span class="badge ${c.is_done ? 'green' : 'gray'}">+${CR.XP_PER_QUEST}XP</span></label>`).join('')}
       </div>
       <div class="note" style="margin-top:14px">📌 <b>중요:</b> 준비도는 대출 승인확률이 아닙니다. 목표 실행에 필요한 정보·서류·행동의 완료율입니다.</div>
     </div>
@@ -620,6 +638,24 @@ function viewDashboard(v) {
     ${sim.monthsNeeded !== Infinity ? `<div class="src">현재 저축 속도 기준 예상 소요 ${sim.monthsNeeded}개월 · ${esc(sim.message)}</div>` : ''}
   </section>`));
 
+  /* 실행 등급 (XP) */
+  const { xp } = creditState();
+  v.append(el(`<section class="card">
+    <div class="card-h" style="margin-bottom:8px">
+      <div><div class="mini">EXECUTION LEVEL</div>
+        <div style="font-size:19px;font-weight:800;color:${xp.tier.color};margin-top:4px">${esc(xp.tier.label)}</div></div>
+      <div style="text-align:right">
+        <div style="font-size:20px;font-weight:800;color:var(--navy)">${xp.earned} <span style="font-size:12px;color:var(--muted)">/ ${xp.total} XP</span></div>
+        ${xp.nextTier ? `<div style="font-size:11px;color:var(--muted)">다음 등급 ‘${esc(xp.nextTier.label)}’까지 ${xp.toNext} XP</div>` : ''}
+      </div>
+    </div>
+    <div class="bar lg"><i style="width:${xp.pct}%;background:${xp.tier.color}"></i></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:12px;flex-wrap:wrap">
+      <span class="src" style="margin:0">실행 준비도 기준 등급입니다. 신용점수·승인확률과 무관합니다.</span>
+      <a class="btn ghost sm" href="#credit">신용 빌드업 열기</a>
+    </div>
+  </section>`));
+
   if (state.txs.length) {
     const hist = state.txs.map((t) => ({ ...t, hour: t.hour ?? new Date(t.occurred_at).getHours() }));
     const rep = FT.monthlyReport(hist, { monthlyTarget: g.monthly_saving });
@@ -633,6 +669,147 @@ function viewDashboard(v) {
       </div>
     </section>`));
   }
+}
+
+/* ======================== 신용 빌드업 ==================================== */
+const flagKey = (k) => `csj.flag.${state.goal.id}.${k}`;
+const getFlag = (k) => localStorage.getItem(flagKey(k)) === '1';
+const setFlag = (k, v) => localStorage.setItem(flagKey(k), v ? '1' : '0');
+
+function creditState() {
+  const detected = CR.detectNonFinancial(state.txs);
+  const xp = CR.computeXP(state.checklist, detected, getFlag('mvno'));
+  return { detected, xp };
+}
+
+function viewCredit(v) {
+  const { detected, xp } = creditState();
+  const telecom = detected.find((d) => d.key === 'telecom');
+  const script = CR.buildSubmissionScript(state.profile, detected);
+  const tierKey = localStorage.getItem('csj.mvnoTier') || 'standard';
+  const mv = telecom && telecom.found ? CR.matchMvno(telecom.avgAmount, state.mvno, tierKey) : null;
+
+  v.append(el(`<section class="card">
+    <div class="card-h"><div class="card-t">신용 빌드업</div><span class="tag">언제든 이용 가능</span></div>
+    <p class="card-sub">이미 성실하게 내고 있는 통신비·보험료를 <b>금융이력으로 바꾸고</b>, 고정비 자체를 낮춥니다.
+      금융 이력이 얇은 사회초년생에게 가장 빠른 지렛대입니다.</p>
+
+    <!-- XP / 등급 -->
+    <div class="card" style="box-shadow:none">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+        <div>
+          <div class="mini">EXECUTION LEVEL</div>
+          <div style="font-size:22px;font-weight:800;color:${xp.tier.color};margin-top:4px">
+            ${esc(xp.tier.label)} <span style="font-size:13px;color:var(--muted);font-weight:600">${esc(xp.tier.desc)}</span></div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:26px;font-weight:800;color:var(--navy)">${xp.earned} <span style="font-size:14px;color:var(--muted)">/ ${xp.total} XP</span></div>
+          ${xp.nextTier ? `<div style="font-size:11px;color:var(--muted)">다음 등급까지 ${xp.toNext} XP</div>` : '<div style="font-size:11px;color:var(--muted)">최고 등급</div>'}
+        </div>
+      </div>
+      <div class="bar lg" style="margin-top:12px"><i style="width:${xp.pct}%;background:${xp.tier.color}"></i></div>
+      <div style="display:grid;gap:7px;margin-top:14px">
+        ${xp.quests.map((q) => `<div style="display:flex;align-items:center;gap:9px;font-size:12.5px;
+          color:${q.done ? 'var(--blue)' : 'var(--muted)'}">
+          <span>${q.done ? '✅' : '⬜'}</span><span style="flex:1">${esc(q.label)}</span>
+          <span class="badge ${q.done ? 'green' : 'gray'}">+${q.xp}XP</span></div>`).join('')}
+      </div>
+      <div class="note" style="margin-top:14px">
+        📌 이 등급은 <b>실행 준비도</b>입니다. 신용점수나 대출 승인확률과는 무관합니다.
+      </div>
+    </div>
+
+    <!-- 비금융 신용 가점 -->
+    <div class="card" style="box-shadow:none;margin-top:16px">
+      <div class="mini">NON-FINANCIAL CREDIT</div>
+      <div style="font-size:17px;font-weight:800;color:var(--navy);margin:6px 0 4px">비금융 납부실적 찾기</div>
+      <div style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:14px">
+        통신요금·보험료·공과금·4대보험을 꾸준히 냈다면 신용평가사에 제출해 평가에 반영을 요청할 수 있습니다.
+        등록된 결제내역에서 자동으로 찾아봤습니다.</div>
+
+      <div style="display:grid;gap:9px">
+        ${detected.map((d) => `<div style="border:1px solid ${d.found ? 'var(--blue-bd2)' : 'var(--bd)'};
+          background:${d.found ? 'var(--sky)' : '#fff'};border-radius:11px;padding:13px 15px">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+            <b style="font-size:14px;color:${d.found ? 'var(--blue)' : 'var(--muted)'}">${d.found ? '✅' : '⬜'} ${esc(d.label)}</b>
+            ${d.found ? `<span class="badge blue">${d.months}개월 · 평균 ${num(d.avgAmount)}원</span>` : '<span class="chip">내역 없음</span>'}
+          </div>
+          ${d.found ? `<div style="font-size:12px;color:var(--muted);margin-top:5px">
+            납부처 ${esc(d.provider)} · 최근 ${new Date(d.latest.occurred_at).toISOString().slice(0, 10)}</div>` : ''}
+        </div>`).join('')}
+      </div>
+
+      ${script ? `
+        <div style="margin-top:16px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <b style="font-size:13px;color:var(--navy)">제출용 자료 (복사해서 사용)</b>
+            <button class="btn ghost sm" id="copyScript">복사하기</button>
+          </div>
+          <textarea class="inp" id="script" rows="11" readonly style="font-family:ui-monospace,Consolas,monospace;font-size:12px;line-height:1.6">${esc(script)}</textarea>
+        </div>
+        <div class="grid2" style="margin-top:12px">
+          ${CR.BUREAUS.map((b) => `<a class="btn ghost sm" href="${esc(b.url)}" target="_blank" rel="noopener"
+            style="flex-direction:column;align-items:flex-start;gap:3px;padding:13px 15px;text-align:left">
+            <b style="font-size:13px">${esc(b.name)} →</b>
+            <span style="font-size:11px;color:var(--muted);font-weight:500">${esc(b.note)}</span></a>`).join('')}
+        </div>
+        <div class="warn" style="margin-top:12px">
+          실제 제출에는 통신사·보험사·공단이 발급한 <b>납부확인서 원본</b>이 필요합니다.
+          가점 반영 여부와 폭은 평가사 내부 기준에 따라 달라지므로, 점수 상승을 보장하지 않습니다.
+        </div>`
+      : `<div class="warn" style="margin-top:14px">
+          아직 찾은 납부실적이 없습니다. <a href="#step4" style="color:inherit;text-decoration:underline">STEP 4 소비 습관 진단</a>에서
+          통신비·보험료가 포함된 결제내역을 등록하면 자동으로 인식합니다.</div>`}
+    </div>
+
+    <!-- 알뜰폰 -->
+    <div class="card" style="box-shadow:none;margin-top:16px">
+      <div class="mini">MVNO MATCHING</div>
+      <div style="font-size:17px;font-weight:800;color:var(--navy);margin:6px 0 4px">청년 알뜰폰 요금제 매칭</div>
+      ${mv ? `
+        <div style="font-size:13px;color:var(--muted);margin-bottom:14px">
+          통신비를 낮추면 <b>월 저축액이 그만큼 늘어납니다.</b> 목표 달성 시점에 직접 영향을 줍니다.</div>
+        <div class="field" style="max-width:280px">
+          <label>필요한 데이터 구간</label>
+          <select class="inp" id="mvnoTier">
+            ${state.mvno.tiers.map((t) => `<option value="${t.key}" ${t.key === tierKey ? 'selected' : ''}>${esc(t.label)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="grid3">
+          <div class="stat"><div class="l">현재 통신비</div><div class="v" style="font-size:17px">${num(mv.current)}원</div></div>
+          <div class="stat"><div class="l">${esc(mv.tier.label)} 예상</div><div class="v blue" style="font-size:17px">${num(mv.tier.price_min)}~${num(mv.tier.price_max)}원</div></div>
+          <div class="stat"><div class="l">연간 절감</div><div class="v green" style="font-size:17px">${num(mv.saveYear)}원</div></div>
+        </div>
+        <div class="note" style="margin-top:12px">🧮 ${esc(mv.formula)}</div>
+        ${mv.worthIt ? `
+          <div class="card" style="box-shadow:none;margin-top:12px;background:var(--sky);border-color:var(--blue-bd)">
+            <div style="font-size:13px;color:var(--navy);line-height:1.6">
+              월 <b>${num(mv.saveMin)}원</b>을 아끼면 목표 월 저축액 ${num(state.goal.monthly_saving || 0)}원의
+              <b>${state.goal.monthly_saving ? Math.round(mv.saveMin / state.goal.monthly_saving * 100) : 0}%</b>를 통신비 하나로 채웁니다.</div>
+            <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+              <a class="btn sm" href="${esc(mv.source.url)}" target="_blank" rel="noopener">요금제 찾아보기 →</a>
+              <button class="btn ghost sm" id="mvnoDone">${getFlag('mvno') ? '✓ 확인함 (+20XP)' : '절감안 확인 완료 (+20XP)'}</button>
+            </div>
+          </div>` : `<div class="note" style="margin-top:12px">현재 요금이 이미 낮은 편이라 전환 실익이 크지 않습니다.</div>`}
+        <div class="warn" style="margin-top:12px">${esc(mv.notice)}</div>
+        <div class="src">출처: <a href="${esc(mv.source.url)}" target="_blank" rel="noopener">${esc(mv.source.name)}</a>
+          · 기준일 ${esc(mv.source.based_on)} · <b style="color:#b45309">검증 전</b></div>`
+      : `<div class="warn" style="margin-top:10px">통신비 결제내역이 없어 비교할 수 없습니다.
+          STEP 4에서 통신요금 자동이체 내역을 등록해 주세요.</div>`}
+    </div>
+  </section>`));
+
+  $('#copyScript')?.addEventListener('click', async () => {
+    const ta = $('#script');
+    ta.select();
+    try { await navigator.clipboard.writeText(ta.value); $('#copyScript').textContent = '✓ 복사됨'; }
+    catch { document.execCommand('copy'); $('#copyScript').textContent = '✓ 복사됨'; }
+  });
+  $('#mvnoTier')?.addEventListener('change', (e) => {
+    localStorage.setItem('csj.mvnoTier', e.target.value);
+    route();
+  });
+  $('#mvnoDone')?.addEventListener('click', () => { setFlag('mvno', !getFlag('mvno')); route(); });
 }
 
 /* ======================== 히스토리 / 정책 모아보기 / 마이페이지 ============ */

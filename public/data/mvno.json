@@ -1,0 +1,16 @@
+{
+  "meta": {
+    "name": "알뜰폰(MVNO) 요금 구간 참고표",
+    "source_name": "알뜰폰 허브 (모두의요금제)",
+    "source_url": "https://www.mvnohub.kr",
+    "based_on": "2026-09-03",
+    "verified": false,
+    "notice": "특정 사업자·요금제가 아니라 데이터 구간별 시장 가격 범위입니다. 실제 요금제는 알뜰폰 허브에서 조회해 확인하세요. 프로모션가는 6~12개월 후 정상가로 전환되는 경우가 많습니다."
+  },
+  "tiers": [
+    { "key": "light",    "label": "소량 (1~3GB)",        "data_gb": 3,   "price_min": 8000,  "price_max": 12000 },
+    { "key": "standard", "label": "표준 (7~11GB)",       "data_gb": 11,  "price_min": 12000, "price_max": 18000 },
+    { "key": "heavy",    "label": "대용량 (71GB~)",      "data_gb": 71,  "price_min": 25000, "price_max": 35000 },
+    { "key": "unlimited","label": "완전 무제한 (5G)",     "data_gb": 999, "price_min": 35000, "price_max": 45000 }
+  ]
+}
