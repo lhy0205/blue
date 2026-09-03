@@ -86,6 +86,7 @@ docs/API코드정보.xlsx 온통청년 공식 코드정의서
 | `SUPABASE_URL` / `SUPABASE_ANON_KEY` | localStorage 모드로 동작 (계정·데이터는 브라우저에만 저장) |
 | `YOUTH_API_KEY` | 정형 정책 DB(`policies.json`) 17종만 사용 |
 | `ANTHROPIC_API_KEY` | 규칙 기반 파서·설명만 사용 |
+| `ANTHROPIC_WORKSPACE_ID` | identity-linked 키를 쓸 때만 필요 (없으면 `anthropic-workspace-id is required` 오류) |
 
 즉 **키가 하나도 없어도 전 기능이 동작**하고, 키를 넣는 순간 해당 기능만 실제 연동으로 승격됩니다.
 

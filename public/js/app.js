@@ -157,7 +157,9 @@ async function fillAI(mountId, task, data) {
     });
     const j = await r.json().catch(() => ({}));
     if (!r.ok || !j.text) {
-      throw new Error(j.message || j.error || `서버 응답 ${r.status}`);
+      const e = new Error(j.message || j.error || `서버 응답 ${r.status}`);
+      e.hint = j.hint;
+      throw e;
     }
     box.innerHTML = `<div class="card" style="box-shadow:none;margin-top:12px;background:#fffdf8;border-color:#ffedd5">
       <span class="chip" style="background:#ffedd5;color:#c2410c;font-weight:800">AI ADVICE</span>
@@ -167,7 +169,8 @@ async function fillAI(mountId, task, data) {
   } catch (e) {
     box.innerHTML = `<div class="warn" style="margin-top:10px">
       <b>AI 해석을 불러오지 못했습니다.</b> 위 규칙 기반 판정과 계산은 그대로 유효합니다.
-      <div style="font-size:11px;margin-top:6px;opacity:.9">사유: ${esc(String(e.message).slice(0, 200))}</div>
+      <div style="font-size:11px;margin-top:6px;opacity:.9">사유: ${esc(String(e.message).slice(0, 240))}</div>
+      ${e.hint ? `<div style="font-size:11px;margin-top:6px;font-weight:700">👉 ${esc(e.hint)}</div>` : ''}
     </div>`;
   }
 }

@@ -79,13 +79,19 @@ export default async function handler(req, res) {
   /* 모델 ID가 계정에서 안 열려 있으면 400/404 가 온다. 한 번은 대체 모델로 재시도한다. */
   const FALLBACK = 'claude-haiku-4-5-20251001';
   async function call(model) {
+    const headers = {
+      'content-type': 'application/json',
+      'x-api-key': key,
+      'anthropic-version': '2023-06-01',
+    };
+    /* identity-linked(사용자 연결) 키는 어느 워크스페이스로 호출하는지 함께 보내야 한다.
+       일반 키를 쓰면 이 값은 없어도 된다. */
+    if (process.env.ANTHROPIC_WORKSPACE_ID) {
+      headers['anthropic-workspace-id'] = process.env.ANTHROPIC_WORKSPACE_ID;
+    }
     const r = await fetch(API, {
       method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': key,
-        'anthropic-version': '2023-06-01',
-      },
+      headers,
       body: JSON.stringify({ model, max_tokens: spec.max_tokens, system: SYSTEM, messages: spec.messages }),
     });
     let json;
@@ -105,8 +111,18 @@ export default async function handler(req, res) {
     if (!r.ok) {
       /* 원인을 그대로 올려보낸다. 화면이 '(empty)' 같은 무의미한 메시지를 띄우지 않도록. */
       const msg = (json && json.error && json.error.message) || (json && json.raw) || `HTTP ${r.status}`;
+      /* 설정으로 해결되는 오류는 무엇을 하면 되는지까지 알려준다 */
+      let hint = null;
+      if (/workspace-id/i.test(msg)) {
+        hint = '환경변수 ANTHROPIC_WORKSPACE_ID 에 워크스페이스 ID(wrkspc_...)를 추가하고 재배포하세요. '
+             + 'Anthropic Console → Settings → Workspaces 에서 확인할 수 있습니다.';
+      } else if (/credit|billing|quota/i.test(msg)) {
+        hint = 'Anthropic Console 에서 결제 수단과 잔액을 확인하세요.';
+      } else if (/authentication|invalid.*api.*key/i.test(msg)) {
+        hint = 'ANTHROPIC_API_KEY 값이 올바른지, 재배포가 되었는지 확인하세요.';
+      }
       return res.status(r.status).json({
-        error: 'upstream_error', status: r.status, model, message: msg,
+        error: 'upstream_error', status: r.status, model, message: msg, hint,
       });
     }
 
