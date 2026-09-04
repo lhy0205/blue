@@ -375,3 +375,70 @@ export function debtSummary(debts, extraMonthly = 0) {
     items: list.map((d) => repaymentPlan(d, extraMonthly)),
   };
 }
+
+/* ---------------------------------------------------------------------------
+ * 6. 완납 vs 일부 상환 — 금리가 낮으면 서둘러 갚을 실익이 적다
+ *
+ *    학자금 1.7% 처럼 금리가 낮은 대출을 목돈으로 완납하면
+ *    이자는 아끼지만 자기자본이 그만큼 줄어 목표가 늦어진다.
+ *    어느 쪽이 유리한지는 "부채 금리 vs 저축의 기회비용"으로 갈린다.
+ * ------------------------------------------------------------------------- */
+
+/* 저축의 기회비용(연). 예금 금리 수준으로 보수적으로 잡는다.
+ * 투자 수익률을 가정하지 않는다 — 확정되지 않은 수익을 근거로 쓰지 않기 위해서다. */
+export const SAVING_BENCHMARK_RATE = 0.03;
+
+/* 일시급 상환 3단계 비교: 안 갚음 / 절반 / 완납 */
+export function lumpsumScenarios(debts, goal, bp, monthlyRepay = 0, monthlySave = 0) {
+  const months = goal.target_months || 1;
+  const total = (debts || []).reduce((s, d) => s + d.balance, 0);
+  const cash = bp.currentAsset;
+  const cap = Math.min(cash, total);
+
+  return [
+    { key: 'none', label: '안 갚음', lump: 0, desc: '지금은 갚지 않고 목표 자금에 집중합니다' },
+    { key: 'half', label: '일부 상환', lump: Math.round(cap / 2 / 100000) * 100000,
+      desc: '절반만 갚아 이자와 목표를 나눠 챙깁니다' },
+    { key: 'full', label: '완납', lump: cap,
+      desc: cap >= total ? '지금 전액 상환합니다' : '보유 현금 전부로 갚습니다(완납은 아님)' },
+  ].map((o) => {
+    const rep = applyRepayment(debts, { lumpsum: o.lump, monthlyRepay, months });
+    /* 완제 뒤에는 상환액이 저축으로 돌아온다 */
+    const effSave = monthlySave + Math.round(rep.freedTotal / months);
+    const equity = Math.max(0, (cash - rep.lumpsumUsed) + effSave * months);
+    const reachable = equity + bp.policyLoan + bp.policyBenefit + bp.govMatch;
+    const shortfall = Math.max(0, bp.target + bp.acquisitionCost - reachable);
+    return {
+      ...o, lumpUsed: rep.lumpsumUsed,
+      interestSaved: rep.interestSaved, interestPaid: rep.interestPaid,
+      remainingDebt: rep.remainingBalance, clearedMonth: rep.clearedMonth,
+      equity, shortfall, reachable: shortfall <= 0,
+    };
+  });
+}
+
+/* 상환 우선순위 조언 — 규칙 기반. 확정적 표현을 쓰지 않는다. */
+export function repayAdvice(debts, benchmark = SAVING_BENCHMARK_RATE) {
+  const list = (debts || []).filter((d) => d.balance > 0);
+  if (!list.length) return null;
+
+  const high = list.filter((d) => d.rate > benchmark);
+  const low = list.filter((d) => d.rate <= benchmark);
+  const nameOf = (d) => d.name || DEBT_LABEL[d.kind] || '대출';
+
+  if (high.length && !low.length) {
+    return { tone: 'repay', headline: '먼저 갚는 쪽이 유리한 구간입니다',
+      body: `${high.map(nameOf).join(' · ')}의 금리가 연 ${(Math.max(...high.map((d) => d.rate)) * 100).toFixed(1)}%로 `
+        + `저축으로 기대할 수 있는 수준(연 ${(benchmark * 100).toFixed(0)}% 가정)보다 높습니다. `
+        + '이자 부담을 먼저 줄이는 선택을 검토해 볼 수 있습니다.' };
+  }
+  if (low.length && !high.length) {
+    return { tone: 'keep', headline: '서둘러 갚을 실익은 크지 않습니다',
+      body: `${low.map(nameOf).join(' · ')}의 금리가 연 ${(Math.min(...low.map((d) => d.rate)) * 100).toFixed(1)}%로 낮습니다. `
+        + `완납하면 이자는 줄지만 자기자본이 그만큼 빠져 목표 시점이 늦어질 수 있습니다. `
+        + '최소 상환을 유지하면서 목표 자금을 모으는 쪽도 합리적인 선택입니다.' };
+  }
+  return { tone: 'mixed', headline: '금리가 높은 것부터 갚는 것이 순서입니다',
+    body: `${high.map(nameOf).join(' · ')}(높은 금리)를 먼저 정리하고, `
+      + `${low.map(nameOf).join(' · ')}는 최소 상환을 유지하는 조합을 검토해 볼 수 있습니다.` };
+}

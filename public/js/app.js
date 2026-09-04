@@ -5,7 +5,9 @@
 import * as S from './store.js';
 import { judgeAll, resolveCombination, filterByGoal, VERDICT, CODE, koreanAge } from './rules.js';
 import { buildBlueprint, feasibility, simulate, tradeoff, progress, money, monthlyPayment, ddayFrom,
-         debtSummary, applyRepayment, totalMonthlyDue, DEBT_LABEL } from './calc.js';
+         debtSummary, applyRepayment, totalMonthlyDue, DEBT_LABEL,
+         allocationScenarios, lumpsumScenarios, repayAdvice } from './calc.js';
+import { renderDebtEditor, collectDebts } from './debtform.js';
 import * as FT from './fintox.js';
 import * as CR from './credit.js';
 import { GOAL_LABEL } from './goalparse.js';
@@ -255,6 +257,9 @@ function paginate(mount, items, renderItem, opts) {
 
 /* ======================== STEP 1 · 정책 판정 ============================== */
 function viewStep1(v) {
+  /* 판정 근거가 되는 내 조건을 맨 위에 요약한다 — 부채도 여기서부터 보인다 */
+  const d1 = debtSummary((state.profile && state.profile.debts) || []);
+
   const rows = state.judged.map((r) => {
     const on = state.selected.has(r.policy_id);
     const pick = ['eligible', 'conditional'].includes(r.verdict);
@@ -283,6 +288,22 @@ function viewStep1(v) {
     </div>
     <p class="card-sub">적용하고 싶은 정책을 <b>여러 개</b> 고를 수 있습니다. 행을 누르면 판정 근거가 펼쳐집니다.
       <span class="badge blue" style="margin-left:6px">신청 가능 · 조건부만 선택할 수 있습니다</span></p>
+
+    <div style="display:flex;gap:7px;flex-wrap:wrap;margin:0 0 14px">
+      ${[
+        ['목표', money(state.goal.target_amount) + ' · ' + state.goal.target_months + '개월'],
+        ['보유 자산', money(state.goal.current_asset || 0)],
+        ['연 소득', money(state.profile.annual_income)],
+        ['거주지', state.profile.region_name || '-'],
+      ].map(([l, val]) => `<span class="chip">${l} <b style="color:var(--navy)">${esc(val)}</b></span>`).join('')}
+      ${d1.has
+        ? `<span class="chip" style="background:#fff5f5;border-color:#f2c7c7">
+             보유 부채 <b style="color:var(--red)">${money(d1.totalBalance)}</b>
+             <span style="opacity:.75">· ${d1.items.map((it) => `${esc(it.name)} 연 ${(it.rate * 100).toFixed(1)}%`).join(' · ')}</span>
+           </span>`
+        : `<span class="chip">보유 부채 <b style="color:var(--navy)">없음</b></span>`}
+      <a class="chip" href="#mypage" style="text-decoration:none;color:var(--blue)">조건 수정 →</a>
+    </div>
     <table class="wf">
       <thead><tr><th style="width:44px"></th><th style="width:110px">상태</th><th>정책명</th><th>판정 의미</th><th style="width:120px">예상 활용액</th></tr></thead>
       <tbody>${rows}</tbody>
@@ -646,6 +667,34 @@ function viewStep3(v) {
             <div style="font-size:12px;color:var(--muted);line-height:1.5">${esc(p.detail)}</div></div>`).join('')}
         </div>
       </div>
+      ${dSum.has ? `<div class="card" style="box-shadow:none;margin-top:14px">
+        <div class="mini">REPAY vs SAVE · 같은 돈을 어떻게 나눌까</div>
+        <div style="font-size:12px;color:var(--muted);margin:6px 0 10px">
+          월 ${num(saving)}원을 상환과 저축에 나누는 세 가지 방식입니다. 위 슬라이더로 직접 조절할 수도 있습니다.</div>
+        <div style="display:grid;gap:8px">
+          ${allocationScenarios(debts, cur.gg, cur.bp, saving, lump).map((sc) => {
+            const on = Math.abs(sc.toRepay - repay) < 15000;
+            return `<div style="border:${on ? '2px solid var(--blue)' : '1px solid var(--bd)'};background:${on ? 'var(--sky)' : '#fff'};border-radius:11px;padding:11px 13px">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap">
+                <b style="font-size:13px;color:var(--navy)">${esc(sc.label)}${on ? ' · 현재' : ''}</b>
+                <span style="font-size:11.5px;color:var(--muted)">상환 ${num(sc.toRepay)} / 저축 ${num(sc.toSave)}</span>
+              </div>
+              <div style="font-size:11.5px;color:var(--muted);margin-top:4px">${esc(sc.desc)}</div>
+              <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:11.5px;margin-top:6px">
+                <span>완제 <b>${sc.clearedMonth === 0 ? '즉시' : sc.clearedMonth ? sc.clearedMonth + '개월' : '기간 내 미완제'}</b></span>
+                <span>총이자 <b>${money(sc.interestPaid)}</b></span>
+                <span>목표시점 자기자본 <b>${money(sc.equity)}</b></span>
+                <span style="color:${sc.reachable ? 'var(--green)' : 'var(--red)'}">
+                  <b>${sc.reachable ? '목표 달성' : money(sc.shortfall) + ' 부족'}</b></span>
+              </div>
+              ${!on ? `<button class="btn ghost" data-alloc="${sc.toRepay}"
+                style="margin-top:8px;padding:6px 12px;font-size:11.5px">이 방식으로 맞추기</button>` : ''}
+            </div>`;
+          }).join('')}
+        </div>
+        <div class="note" style="margin-top:10px;font-size:11.5px">
+          이자를 덜 내는 쪽과 목표에 빨리 닿는 쪽이 다를 수 있습니다. 어느 쪽을 우선할지는 선택입니다.</div>
+      </div>` : ''}
       ${diffs.length ? `<div class="card" style="box-shadow:none;margin-top:14px;background:var(--sky);border-color:var(--blue-bd)">
         <div class="mini">판정이 바뀌었습니다</div>
         <div style="display:grid;gap:7px;margin-top:8px">
@@ -739,7 +788,39 @@ function viewStep3(v) {
           <div style="font-size:11px;opacity:.85;margin-top:6px">🧮 ${esc(r.formula)}</div>
         </div>
 
-        <div class="${dMonths === null || dMonths > 0 ? 'warn' : 'note'}" style="margin-top:10px">
+        ${(() => {
+          const adv = repayAdvice(debts);
+          if (!adv) return '';
+          return `<div class="${adv.tone === 'repay' ? 'warn' : 'note'}" style="margin-top:12px">
+            <b>${esc(adv.headline)}</b>
+            <div style="font-size:11.5px;opacity:.9;margin-top:4px">${esc(adv.body)}</div></div>`;
+        })()}
+
+        <div style="margin-top:14px">
+          <div class="mini" style="margin-bottom:8px">완납 vs 일부 상환</div>
+          <div style="display:grid;gap:7px">
+            ${lumpsumScenarios(debts, cur.gg, cur.bp, repay, netSaving).map((o) => {
+              const on = Math.abs(o.lump - lump) < 150000;
+              return `<div style="border:${on ? '2px solid var(--blue)' : '1px solid var(--bd)'};background:${on ? 'var(--sky)' : '#fff'};border-radius:10px;padding:10px 12px">
+                <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap">
+                  <b style="font-size:12.5px;color:var(--navy)">${esc(o.label)}${on ? ' · 현재' : ''}</b>
+                  <span style="font-size:11px;color:var(--muted)">일시급 ${num(o.lumpUsed)}원</span>
+                </div>
+                <div style="font-size:11px;color:var(--muted);margin-top:3px">${esc(o.desc)}</div>
+                <div style="display:flex;gap:10px;flex-wrap:wrap;font-size:11px;margin-top:5px">
+                  <span>이자 절감 <b>${money(o.interestSaved)}</b></span>
+                  <span>남는 부채 <b>${money(o.remainingDebt)}</b></span>
+                  <span style="color:${o.reachable ? 'var(--green)' : 'var(--red)'}">
+                    <b>${o.reachable ? '목표 달성' : money(o.shortfall) + ' 부족'}</b></span>
+                </div>
+                ${!on ? `<button class="btn ghost" data-lump="${o.lump}"
+                  style="margin-top:7px;padding:5px 11px;font-size:11px">이 방식으로 맞추기</button>` : ''}
+              </div>`;
+            }).join('')}
+          </div>
+        </div>
+
+        <div class="${dMonths === null || dMonths > 0 ? 'warn' : 'note'}" style="margin-top:12px">
           목표 도달 시점 영향:
           <b>${dMonths === null ? '계산 불가 — 상환 비중이 너무 큽니다'
             : dMonths > 0 ? `약 ${dMonths}개월 지연` : dMonths < 0 ? `약 ${Math.abs(dMonths)}개월 단축` : '변화 없음'}</b>
@@ -748,6 +829,13 @@ function viewStep3(v) {
             대신 이자 부담과 잔여 부채가 줄어듭니다. 어느 쪽을 우선할지는 선택입니다.</div>
         </div>
       </div>`;
+
+    /* debtBox 는 redraw 마다 다시 그려지므로 여기서 바로 바인딩한다 */
+    $('#debtBox').querySelectorAll('[data-lump]').forEach((b) => b.addEventListener('click', () => {
+      lump = Number(b.dataset.lump);
+      const ls = $('#lSl'); if (ls) ls.value = lump;
+      redraw();
+    }));
   }
 
   /* 재렌더되는 영역의 이벤트 재바인딩 */
@@ -765,6 +853,11 @@ function viewStep3(v) {
       $('#tSl').value = simTarget;
       redraw();
     });
+    document.querySelectorAll('[data-alloc]').forEach((b) => b.addEventListener('click', () => {
+      repay = Number(b.dataset.alloc);
+      const rs = $('#rSl'); if (rs) rs.value = repay;
+      redraw();
+    }));
     document.querySelectorAll('[data-final]').forEach((b) => b.addEventListener('click', async (e) => {
       e.stopPropagation();
       state.finalId = b.dataset.final;
@@ -1497,9 +1590,6 @@ function viewMypage(v) {
   const rows = [
     ['이름', p.nickname], ['만 나이', koreanAge(p.birth_ymd) + '세'],
     ['세전 연소득', money(p.annual_income)], ['순자산', p.net_asset != null ? money(p.net_asset) : '미입력'],
-    ['보유 부채', (p.debts && p.debts.length)
-      ? p.debts.map((d) => `${DEBT_LABEL[d.kind] || '대출'} ${money(d.balance)} (연 ${(d.rate * 100).toFixed(1)}%)`).join(' · ')
-      : '없음'],
     ['취업 형태', CODE.job[p.job_code]], ['학력', CODE.school[p.school_code]],
     ['결혼 상태', CODE.marriage[p.marriage_code]],
     ['거주지', p.region_name || regionName(p.zip_cd)],
@@ -1511,12 +1601,49 @@ function viewMypage(v) {
     <p class="card-sub">여기 값이 바뀌면 정책 판정이 즉시 다시 계산됩니다.</p>
     <div class="grid2">${rows.map(([l, val]) => `<div class="stat" style="text-align:left">
       <div class="l">${l}</div><div class="v" style="font-size:15px">${esc(val)}</div></div>`).join('')}</div>
+    <div style="border-top:1px solid var(--bd);margin-top:20px;padding-top:18px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
+        <div>
+          <div style="font-size:14px;font-weight:800;color:var(--navy)">보유 부채</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:3px">
+            상환 계획과 목표 도달 시점 계산에 사용됩니다. 저장하면 즉시 반영됩니다.</div>
+        </div>
+        <div id="debtTotal" style="font-size:16px;font-weight:800;color:var(--red)"></div>
+      </div>
+      <div id="myDebtBox" style="margin-top:12px"></div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:12px">
+        <button class="btn" id="saveDebt" style="padding:9px 18px;font-size:13px">부채 저장</button>
+        <span id="debtMsg" style="font-size:12px;color:var(--green);font-weight:700"></span>
+      </div>
+    </div>
+
     <div style="display:flex;gap:10px;margin-top:18px">
       <button class="btn ghost" id="logout">로그아웃</button>
       <a class="btn ghost" href="./index.html">새 목표 설정</a>
     </div>
     <div class="src" style="margin-top:14px">저장 위치: ${state.mode === 'supabase' ? 'Supabase (계정 연동)' : '이 브라우저 (localStorage)'}</div>
   </section>`));
+
+  /* ── 부채 편집 ─────────────────────────────────────────── */
+  const box = $('#myDebtBox');
+  const showTotal = (list) => {
+    const t = (list || []).reduce((a, d) => a + d.balance, 0);
+    $('#debtTotal').textContent = t ? money(t) : '없음';
+  };
+  renderDebtEditor(box, p.debts || []);
+  showTotal(p.debts);
+  box.addEventListener('input', () => showTotal(collectDebts(box)));
+  box.addEventListener('click', () => setTimeout(() => showTotal(collectDebts(box)), 0));
+
+  $('#saveDebt').addEventListener('click', async () => {
+    const debts = collectDebts(box);
+    await S.saveProfile({ debts });
+    state.profile = { ...state.profile, debts };
+    showTotal(debts);
+    $('#debtMsg').textContent = '저장했습니다 · 정책 판정과 시뮬레이션에 반영됩니다';
+    setTimeout(() => { $('#debtMsg').textContent = ''; }, 3000);
+  });
+
   $('#logout').addEventListener('click', async () => { await S.signOut(); location.href = './index.html'; });
 }
 

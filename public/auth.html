@@ -95,6 +95,11 @@
         <span class="hint">중기청·내일채움공제 등 특화 정책 판정에 사용됩니다</span>
       </div>
 
+      <div class="field">
+        <label>보유 부채 (선택)</label>
+        <div id="debtBox"></div>
+      </div>
+
       <button class="btn full" type="submit" style="margin-top:18px">가입하고 분석 시작</button>
     </form>
   </div>
@@ -104,6 +109,7 @@
 import { initStore, signIn, signUp, getActiveGoal, createGoal } from './js/store.js';
 import { CODE } from './js/rules.js';
 import { SIDO, SIGUNGU, regionName } from './js/regions.js';
+import { renderDebtEditor, collectDebts } from './js/debtform.js';
 
 const $ = (s) => document.querySelector(s);
 const params = new URLSearchParams(location.search);
@@ -133,6 +139,9 @@ function fillSigungu() {
 $('#sido').addEventListener('change', fillSigungu);
 fillSigungu();
 $('#sido').value = '11000'; fillSigungu(); $('#sigungu').value = '11440';
+
+/* --------- 부채 입력 --------- */
+renderDebtEditor($('#debtBox'), []);
 
 /* --------- 탭 --------- */
 function setTab(t) {
@@ -203,6 +212,7 @@ $('#signupForm').addEventListener('submit', async (e) => {
     region_name: regionName(zip),
     is_homeowner: f.get('is_homeowner') === 'true',
     household_size: 1,
+    debts: collectDebts($('#debtBox')),
   };
   try {
     await signUp(f.get('email').trim(), f.get('password'), profile);

@@ -34,6 +34,18 @@ function evalMoney(expr) {
 const MONEY_RE = /((?:\d[\d,.]*\s*(?:억|천만|백만|만|천)\s*)+(?:원)?)/g;
 const HAVE_RE = /(있|보유|모았|모은|자산|현재|지금|가지고)/;
 
+/* 부채 — 금액 '앞'에 오는 명사로 판별한다. ("학자금 대출 400만 원 있어")
+ * '있어'가 붙어 있어도 보유자산이 아니라 갚아야 할 돈이다.
+ * 목표로 받을 대출(버팀목·전세자금·정책대출)은 기존 부채가 아니므로 제외한다. */
+const DEBT_KINDS = [
+  [/학자금/, 'student'],
+  [/신용\s*대출|마이너스\s*통장|마통/, 'credit'],
+  [/카드론|현금\s*서비스|카드\s*빚/, 'card'],
+  [/주담대|주택\s*담보/, 'mortgage'],
+];
+const DEBT_HINT_RE = /(학자금|신용\s*대출|마이너스\s*통장|마통|카드론|현금\s*서비스|빚|채무|대출)/;
+const DEBT_EXCLUDE_RE = /(버팀목|디딤돌|보금자리|중기청|전세\s*자금|정책\s*대출|주택\s*구입)/;
+
 export function parseGoal(text) {
   const raw = (text || '').trim();
 
@@ -60,17 +72,35 @@ export function parseGoal(text) {
     if (!value) continue;
     /* 금액 뒤 12글자 안에 '있어/보유/자산' 류가 오면 현재 보유 자산으로 본다 */
     const after = raw.slice(m.index + m[1].length, m.index + m[1].length + 14);
-    const before = raw.slice(Math.max(0, m.index - 10), m.index);
-    amounts.push({ value, isHave: HAVE_RE.test(after) || /자산은?\s*$|현재\s*$|지금\s*$/.test(before) });
+    const before = raw.slice(Math.max(0, m.index - 14), m.index);
+    const isDebt = DEBT_HINT_RE.test(before) && !DEBT_EXCLUDE_RE.test(before);
+    amounts.push({
+      value, isDebt, before, after,
+      isHave: HAVE_RE.test(after) || /자산은?\s*$|현재\s*$|지금\s*$/.test(before),
+    });
   }
 
+  /* ---------- 부채 ---------- */
+  const debts = amounts.filter((a) => a.isDebt).map((a) => {
+    const kind = (DEBT_KINDS.find(([re]) => re.test(a.before)) || [null, 'other'])[1];
+    /* 금액 앞뒤에서 금리를 찾는다: "연 5.2%", "5.2%" */
+    const rm = (a.before + ' ' + a.after).match(/(\d+(?:\.\d+)?)\s*%/);
+    return {
+      kind,
+      balance: a.value,
+      rate: rm ? Math.min(0.3, Number(rm[1]) / 100) : 0,
+      needsRate: !rm,
+    };
+  });
+
   let target_amount = null, current_asset = null;
-  const haves = amounts.filter((a) => a.isHave);
-  const rest = amounts.filter((a) => !a.isHave);
+  const usable = amounts.filter((a) => !a.isDebt);   // 부채는 목표/자산 후보가 아니다
+  const haves = usable.filter((a) => a.isHave);
+  const rest = usable.filter((a) => !a.isHave);
   if (haves.length) current_asset = haves[0].value;
   if (rest.length) target_amount = Math.max(...rest.map((a) => a.value));
   /* 금액이 하나뿐인데 '있어'가 붙었으면 목표가 아니라 보유자산이다 */
-  if (!target_amount && current_asset && amounts.length === 1) target_amount = null;
+  if (!target_amount && current_asset && usable.length === 1) target_amount = null;
   /* 목표가 보유자산보다 작으면 뒤바뀐 것으로 보고 교정 */
   if (target_amount && current_asset && target_amount < current_asset) {
     [target_amount, current_asset] = [current_asset, target_amount];
@@ -90,10 +120,12 @@ export function parseGoal(text) {
     target_months,
     current_asset,
     region,
+    debts,
     confidence: {
       goal_type: /전세|아파트|결혼|목돈|독립|매매/.test(raw) ? 'high' : 'low',
       target_amount: target_amount ? 'high' : 'none',
       target_months: target_months ? 'high' : 'none',
+      debts: debts.length ? (debts.every((d) => !d.needsRate) ? 'high' : 'partial') : 'none',
     },
   };
 }
