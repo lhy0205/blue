@@ -165,8 +165,17 @@ export function tradeoff(bp, goal, monthlySaving) {
  * 설계서 8p: 월 저축액을 올리면 D-Day가 실제로 당겨져야 한다.
  * 그래서 '목표 D-Day'(기간 기준)와 '예상 D-Day'(저축 속도 기준)를 나눠서 계산한다. */
 export function ddayFrom(startedOn, months) {
+  /* months 가 Infinity/NaN 이면 Date 가 Invalid 가 되고 toISOString() 이 던진다.
+     simulate() 는 도달 불가일 때 Infinity 를 돌려주므로 반드시 여기서 막아야 한다.
+     (막지 않으면 슬라이더 입력 핸들러가 통째로 죽어 화면이 멈춘다) */
+  if (!Number.isFinite(months)) {
+    return { date: null, days: null, label: '—', ymd: '—', unknown: true };
+  }
   const d = new Date(startedOn || Date.now());
   d.setMonth(d.getMonth() + Math.round(months || 0));
+  if (Number.isNaN(d.getTime())) {
+    return { date: null, days: null, label: '—', ymd: '—', unknown: true };
+  }
   const days = Math.ceil((d - new Date()) / 86400000);
   return {
     date: d, days,
@@ -249,8 +258,9 @@ export const DEBT_LABEL = {
 export function debtMonthlyDue(d) {
   if (!d || !d.balance) return 0;
   if (d.monthly_payment != null) return d.monthly_payment;
-  if (d.remaining_months) return monthlyPayment(d.balance, d.rate, d.remaining_months / 12).value;
-  return Math.round((d.balance * d.rate) / 12);
+  const rate = d.rate || 0;     // 금리 미입력(null)은 0으로 계산하되 조언에서는 제외한다
+  if (d.remaining_months) return monthlyPayment(d.balance, rate, d.remaining_months / 12).value;
+  return Math.round((d.balance * rate) / 12);
 }
 
 export function totalMonthlyDue(debts) {
@@ -430,8 +440,8 @@ export function repayAdvice(debts, benchmark = SAVING_BENCHMARK_RATE) {
 
   /* 금리를 모르는 부채로는 유불리를 말할 수 없다.
      0% 로 두면 "서둘러 갚을 실익 없음"이 되는데, 실제로는 카드론일 수도 있다. */
-  const unknown = all.filter((d) => !d.rate);
-  const list = all.filter((d) => d.rate > 0);
+  const unknown = all.filter((d) => d.rate == null);      // 0% 무이자와 구분한다
+  const list = all.filter((d) => d.rate != null);
   if (!list.length) {
     return { tone: 'unknown', headline: '금리를 입력하면 상환 순서를 계산해 드립니다',
       body: `${unknown.map((d) => d.name || DEBT_LABEL[d.kind] || '대출').join(' · ')}의 금리가 없습니다. `

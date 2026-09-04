@@ -7,7 +7,7 @@ import { judgeAll, resolveCombination, filterByGoal, VERDICT, CODE, koreanAge } 
 import { buildBlueprint, feasibility, simulate, tradeoff, progress, money, monthlyPayment, ddayFrom,
          debtSummary, applyRepayment, totalMonthlyDue, DEBT_LABEL,
          allocationScenarios, lumpsumScenarios, repayAdvice } from './calc.js';
-import { renderDebtEditor, collectDebts } from './debtform.js';
+import { renderDebtEditor, collectDebts, validateDebts } from './debtform.js';
 import * as FT from './fintox.js';
 import * as CR from './credit.js';
 import { GOAL_LABEL } from './goalparse.js';
@@ -621,9 +621,15 @@ function viewStep3(v) {
       </div>` : '';
 
     /* D-Day — 목표 기간 기준과 저축 속도 기준을 나란히 */
-    const gapDays = cur.dday.days - cur.targetDday.days;
-    const tone = gapDays > 0 ? 'var(--red)' : gapDays < 0 ? 'var(--green)' : 'var(--blue)';
-    $('#ddayBox').innerHTML = `
+    const unknownDday = cur.dday.unknown || cur.dday.days === null;
+    const gapDays = unknownDday ? null : cur.dday.days - cur.targetDday.days;
+    const tone = unknownDday ? 'var(--red)' : gapDays > 0 ? 'var(--red)' : gapDays < 0 ? 'var(--green)' : 'var(--blue)';
+    $('#ddayBox').innerHTML = unknownDday ? `
+      <div class="stat" style="text-align:left;background:#fff;border-color:var(--red)">
+        <div class="l">예상 도달 시점 (현재 저축 속도 기준)</div>
+        <div style="font-size:19px;font-weight:800;color:var(--red);margin-top:4px">계산할 수 없음</div>
+        <div class="f" style="margin-top:6px">${esc(cur.sim.message || '저축으로 돌아가는 금액이 거의 없습니다.')}</div>
+      </div>` : `
       <div class="stat" style="text-align:left;background:#fff;border-color:${tone}">
         <div class="l">예상 도달 시점 (현재 저축 속도 기준)</div>
         <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-top:4px">
@@ -870,9 +876,12 @@ function viewStep3(v) {
 
   /* 슬라이더 — 드래그 중에는 화면만, 놓았을 때 저장 */
   $('#tSl').addEventListener('input', (e) => { simTarget = Number(e.target.value); state.simTarget = simTarget; redraw(); });
-  $('#sSl').addEventListener('input', (e) => { saving = Number(e.target.value); redraw(); });
-  $('#lSl')?.addEventListener('input', (e) => { lump = Number(e.target.value); redraw(); });
-  $('#rSl')?.addEventListener('input', (e) => { repay = Number(e.target.value); redraw(); });
+  /* 렌더 중 예외가 나면 이후 입력이 통째로 먹통이 된다.
+     한 번의 계산 실패가 슬라이더 전체를 죽이지 않도록 감싼다. */
+  const safeRedraw = () => { try { redraw(); } catch (err) { console.error('redraw 실패', err); } };
+  $('#sSl').addEventListener('input', (e) => { saving = Number(e.target.value); safeRedraw(); });
+  $('#lSl')?.addEventListener('input', (e) => { lump = Number(e.target.value); safeRedraw(); });
+  $('#rSl')?.addEventListener('input', (e) => { repay = Number(e.target.value); safeRedraw(); });
   $('#sSl').addEventListener('change', async () => {
     const cur = planFor(simTarget, saving);
     await S.updateGoal(g.id, { monthly_saving: saving });
@@ -1606,7 +1615,8 @@ function viewMypage(v) {
         <div>
           <div style="font-size:14px;font-weight:800;color:var(--navy)">보유 부채</div>
           <div style="font-size:12px;color:var(--muted);margin-top:3px">
-            상환 계획과 목표 도달 시점 계산에 사용됩니다. 저장하면 즉시 반영됩니다.</div>
+            <b>선택 항목</b>입니다. 갚고 있는 대출이 있을 때만 넣으세요.
+            상환 계획과 목표 도달 시점 계산에 사용되며, 저장하면 즉시 반영됩니다.</div>
         </div>
         <div id="debtTotal" style="font-size:16px;font-weight:800;color:var(--red)"></div>
       </div>
@@ -1636,12 +1646,24 @@ function viewMypage(v) {
   box.addEventListener('click', () => setTimeout(() => showTotal(collectDebts(box)), 0));
 
   $('#saveDebt').addEventListener('click', async () => {
+    const v = validateDebts(box);
     const debts = collectDebts(box);
     await S.saveProfile({ debts });
     state.profile = { ...state.profile, debts };
+    /* 저장된 값으로 폼을 다시 그린다 — 버려진 행이 화면에 남아
+       "저장됐다"고 오해하지 않도록. */
+    renderDebtEditor(box, debts);
+    /* 폼을 다시 그리면 경고문도 같이 지워진다 — 새 폼에 다시 써 준다 */
+    if (v.messages.length) {
+      const w = box.querySelector('.debt-warn');
+      if (w) w.textContent = v.messages.join(' ');
+    }
     showTotal(debts);
-    $('#debtMsg').textContent = '저장했습니다 · 정책 판정과 시뮬레이션에 반영됩니다';
-    setTimeout(() => { $('#debtMsg').textContent = ''; }, 3000);
+    $('#debtMsg').style.color = v.emptyCount ? 'var(--red)' : 'var(--green)';
+    $('#debtMsg').textContent = debts.length
+      ? `${debts.length}건 저장했습니다 · 정책 판정과 시뮬레이션에 반영됩니다`
+      : '부채 없음으로 저장했습니다';
+    setTimeout(() => { $('#debtMsg').textContent = ''; }, 4000);
   });
 
   $('#logout').addEventListener('click', async () => { await S.signOut(); location.href = './index.html'; });

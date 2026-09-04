@@ -116,7 +116,7 @@
 import { initStore, signIn, signUp, getActiveGoal, createGoal, resetDemoData, saveProfile, getProfile } from './js/store.js';
 import { CODE } from './js/rules.js';
 import { SIDO, SIGUNGU, regionName } from './js/regions.js';
-import { renderDebtEditor, collectDebts } from './js/debtform.js';
+import { renderDebtEditor, collectDebts, validateDebts } from './js/debtform.js';
 
 const $ = (s) => document.querySelector(s);
 const params = new URLSearchParams(location.search);
@@ -248,7 +248,7 @@ $('#signupForm').addEventListener('submit', async (e) => {
     region_name: regionName(zip),
     is_homeowner: f.get('is_homeowner') === 'true',
     household_size: 1,
-    debts: collectDebts($('#debtBox')),
+    debts: (validateDebts($('#debtBox')), collectDebts($('#debtBox'))),
   };
   try {
     await signUp(f.get('email').trim(), f.get('password'), profile);
