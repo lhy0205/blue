@@ -204,3 +204,19 @@ h1,h2,h3,h4{line-height:1.3}
   .gnb a{flex:0 0 auto;padding:10px 14px}
   .grid2,.grid3,.grid4{grid-template-columns:1fr}
 }
+
+/* 목표 바의 조건 요약 칩 — 보유 자산 / 보유 부채를 모든 화면에서 보여준다 */
+.goalbar-facts { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-left: auto; }
+.gb-chip {
+  display: inline-flex; align-items: baseline; gap: 5px;
+  background: #fff; border: 1px solid var(--bd); border-radius: 999px;
+  padding: 4px 11px; font-size: 12px; color: var(--muted); white-space: nowrap;
+}
+.gb-chip b { color: var(--navy); font-size: 12.5px; }
+.gb-chip.debt { background: #fff5f5; border-color: #f2c7c7; }
+.gb-chip.debt b { color: var(--red); }
+.gb-chip .gb-sub { color: var(--muted2); font-size: 11px; }
+@media (max-width: 720px) {
+  .goalbar-facts { margin-left: 0; width: 100%; }
+  .gb-chip .gb-sub { display: none; }
+}

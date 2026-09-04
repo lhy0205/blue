@@ -127,8 +127,22 @@ function renderSteps(active) {
 
 function renderGoalbar() {
   const g = state.goal;
+  /* 목표 바는 모든 화면 상단에 뜬다. 보유 자산과 부채를 여기에 함께 적어
+     어느 단계에서든 "내 조건이 이랬지"를 다시 확인할 수 있게 한다. */
+  const gd = debtSummary((state.profile && state.profile.debts) || []);
   $('#goalbar').innerHTML = `<div class="goalbar">
     <span>🎯 분석 목표: “${esc(g.raw_input || `${money(g.target_amount)} ${GOAL_LABEL[g.goal_type] || ''}`)}”</span>
+    <span class="goalbar-facts">
+      <span class="gb-chip">보유 자산 <b>${money(g.current_asset || 0)}</b></span>
+      ${gd.has
+        ? `<span class="gb-chip debt" title="${esc(gd.items.map((it) => `${it.name} ${money(it.balance)}`
+            + (it.rate != null ? ` 연 ${(it.rate * 100).toFixed(1)}%` : ' 금리 미입력')).join(' · '))}">
+             보유 부채 <b>${money(gd.totalBalance)}</b>
+             <span class="gb-sub">${gd.items.map((it) => esc(it.name)
+               + (it.rate != null ? ` ${(it.rate * 100).toFixed(1)}%` : '')).join(' · ')}</span>
+           </span>`
+        : `<span class="gb-chip">보유 부채 <b>없음</b></span>`}
+    </span>
     <a class="edit" href="./index.html">목표 바꾸기</a>
   </div>`;
 }
