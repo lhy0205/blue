@@ -74,8 +74,9 @@
 </main>
 
 <script type="module">
-import { initStore, currentUser, getActiveGoal, getProfile, createGoal, signOut, aiEnabled } from './js/store.js';
+import { initStore, currentUser, getActiveGoal, getProfile, createGoal, signOut, aiEnabled, saveProfile } from './js/store.js';
 import { parseGoal, enhanceWithAI, GOAL_LABEL } from './js/goalparse.js';
+import { DEBT_LABEL } from './js/calc.js';
 
 const $ = (s) => document.querySelector(s);
 let parsedGoal = null;
@@ -129,17 +130,27 @@ function render() {
     ['목표 금액', won(g.target_amount)],
     ['목표 기간', g.target_months ? g.target_months + '개월' : '—'],
     ['현재 자산', won(g.current_asset)],
+    /* 문장에서 부채를 찾았으면 함께 보여준다. "학자금 400만 원 있어" 를
+       보유 자산으로 잘못 넣지 않기 위해 파서가 따로 분리한다. */
+    ...(g.debts && g.debts.length
+      ? [['보유 부채', g.debts.map((d) => `${DEBT_LABEL[d.kind] || '대출'} ${won(d.balance)}`
+          + (d.rate ? ` (연 ${(d.rate * 100).toFixed(1)}%)` : '')).join(', ')]]
+      : []),
   ].map(([l, v]) => `<div class="stat"><div class="l">${l}</div><div class="v" style="font-size:17px">${v}</div></div>`).join('');
 
   const missing = [];
   if (!g.target_amount) missing.push('목표 금액');
   if (!g.target_months) missing.push('목표 기간');
+  const rateUnknown = (g.debts || []).filter((d) => d.needsRate);
   const src = g.ai_used
     ? '<span class="chip" style="background:#ffedd5;color:#c2410c">AI 보정 적용</span>'
     : `<span class="chip">${aiEnabled() ? '규칙 파서로 충분' : '규칙 파서 · AI 미연결'}</span>`;
   $('#askMore').innerHTML = (missing.length
     ? `<div class="warn">${missing.join('과 ')}을(를) 알 수 없었습니다. 다음 화면에서 직접 입력해 주세요.</div>`
     : `<div class="note">💡 정확한 정책 판정을 위해 나이·소득·거주지 정보가 필요합니다. ${user ? '가입 시 입력한 정보를 사용합니다.' : '회원가입에서 한 번만 입력하면 됩니다.'}</div>`)
+    + (rateUnknown.length
+      ? `<div class="warn" style="margin-top:8px">대출 금리를 찾지 못했습니다. 마이페이지에서 금리를 입력하면 상환 계획이 더 정확해집니다.</div>`
+      : '')
     + `<div style="margin-top:8px">${src}</div>`;
   $('#parsed').classList.remove('hide');
   $('#parsed').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -152,6 +163,13 @@ $('#confirm').addEventListener('click', async () => {
     location.href = './auth.html?mode=signup&next=goal';
     return;
   }
+  /* 문장에서 찾은 부채는 목표가 아니라 프로필에 저장한다.
+     이미 입력해 둔 부채가 있으면 덮어쓰지 않는다. */
+  if (parsedGoal.debts && parsedGoal.debts.length && !(prof && prof.debts && prof.debts.length)) {
+    try { await saveProfile({ debts: parsedGoal.debts.map(({ needsRate, ...d }) => d) }); }
+    catch (e) { /* 저장 실패해도 목표 생성은 계속한다 */ }
+  }
+
   await createGoal({
     raw_input: parsedGoal.raw_input,
     goal_type: parsedGoal.goal_type,

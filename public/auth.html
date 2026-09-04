@@ -47,6 +47,13 @@
         <button type="button" data-demo="demo1@cheongsajin.kr">데모 · 김민재(전세 독립)</button>
         <button type="button" data-demo="demo2@cheongsajin.kr">데모 · 이지은(내집 마련)</button>
       </div>
+      <div style="text-align:center;margin-top:10px">
+        <button type="button" id="resetDemo"
+          style="background:none;border:none;color:var(--muted);font-size:12px;text-decoration:underline;cursor:pointer">
+          데모 데이터 새로 받기
+        </button>
+        <div id="resetMsg" style="font-size:12px;color:var(--green);font-weight:700;margin-top:6px"></div>
+      </div>
     </form>
 
     <!-- 회원가입 -->
@@ -106,7 +113,7 @@
 </div>
 
 <script type="module">
-import { initStore, signIn, signUp, getActiveGoal, createGoal } from './js/store.js';
+import { initStore, signIn, signUp, getActiveGoal, createGoal, resetDemoData, saveProfile, getProfile } from './js/store.js';
 import { CODE } from './js/rules.js';
 import { SIDO, SIGUNGU, regionName } from './js/regions.js';
 import { renderDebtEditor, collectDebts } from './js/debtform.js';
@@ -140,8 +147,18 @@ $('#sido').addEventListener('change', fillSigungu);
 fillSigungu();
 $('#sido').value = '11000'; fillSigungu(); $('#sigungu').value = '11440';
 
-/* --------- 부채 입력 --------- */
-renderDebtEditor($('#debtBox'), []);
+/* --------- 부채 입력 ---------
+   목표 문장("학자금 대출 400만 원 있어")에서 뽑힌 부채가 있으면 미리 채운다. */
+let pendingDebts = [];
+try {
+  const pg = JSON.parse(sessionStorage.getItem('csj.pendingGoal') || 'null');
+  if (pg && pg.debts && pg.debts.length) pendingDebts = pg.debts.map(({ needsRate, ...d }) => d);
+} catch (e) { /* 무시 */ }
+renderDebtEditor($('#debtBox'), pendingDebts);
+if (pendingDebts.length) {
+  $('#debtBox').insertAdjacentHTML('afterbegin',
+    '<div class="note" style="margin-bottom:8px">목표 문장에서 찾은 대출을 미리 채웠습니다. 금리를 확인해 주세요.</div>');
+}
 
 /* --------- 탭 --------- */
 function setTab(t) {
@@ -165,6 +182,15 @@ async function afterAuth() {
   if (pending) {
     const g = JSON.parse(pending);
     sessionStorage.removeItem('csj.pendingGoal');
+    /* 기존 계정으로 로그인한 경우: 프로필에 부채가 없을 때만 문장에서 찾은 값을 넣는다 */
+    if (g.debts && g.debts.length) {
+      try {
+        const cur = await getProfile();
+        if (!cur || !(cur.debts && cur.debts.length)) {
+          await saveProfile({ debts: g.debts.map(({ needsRate, ...d }) => d) });
+        }
+      } catch (e) { /* 저장 실패해도 진행 */ }
+    }
     await createGoal({
       raw_input: g.raw_input, goal_type: g.goal_type,
       target_amount: g.target_amount || 0, target_months: g.target_months || 24,
@@ -186,6 +212,16 @@ $('#loginForm').addEventListener('submit', async (e) => {
     await afterAuth();
   } catch (err) { showErr(err.message); }
 });
+$('#resetDemo').addEventListener('click', () => {
+  try {
+    resetDemoData();
+    $('#resetMsg').textContent = '데모 데이터를 새로 받았습니다. 아래 데모 버튼을 눌러 주세요.';
+  } catch (err) {
+    $('#resetMsg').style.color = 'var(--red)';
+    $('#resetMsg').textContent = err.message;
+  }
+});
+
 document.querySelectorAll('[data-demo]').forEach((b) => b.addEventListener('click', async () => {
   try {
     await signIn(b.dataset.demo, 'demo1234');

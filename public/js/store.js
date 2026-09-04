@@ -36,6 +36,19 @@ export async function initStore() {
   if (mode === 'local') seedDemoAccounts();
   return { mode, config: cachedConfig };
 }
+/** 데모 데이터를 지금 즉시 다시 심는다 (로컬 모드 전용).
+ *  비개발자도 콘솔 없이 초기화할 수 있게 화면 버튼에서 호출한다. */
+export function resetDemoData() {
+  if (mode !== 'local') throw new Error('데모 초기화는 로컬 모드에서만 가능합니다.');
+  const users = readJSON(LS.users, {});
+  ['demo1@cheongsajin.kr', 'demo2@cheongsajin.kr'].forEach((e) => {
+    if (users[e]) localStorage.removeItem(LS.data(users[e].id));
+  });
+  localStorage.removeItem('csj.seedver');
+  localStorage.removeItem(LS.session);
+  seedDemoAccounts();
+}
+
 export const storeMode = () => mode;
 export const aiEnabled = () => !!(cachedConfig && cachedConfig.hasAI);
 export const policyApiEnabled = () => !!(cachedConfig && cachedConfig.hasPolicyApi);
@@ -51,7 +64,9 @@ function emptyData() {
 }
 
 /* 심사위원이 회원가입 없이 바로 볼 수 있도록 데모 계정 2개를 심어둔다 */
-const SEED_VER = '3';
+/* 데모 계정 시드 버전. 데모 데이터를 바꾸면 이 값을 올린다.
+   그러면 사용자가 아무것도 하지 않아도 다음 접속에서 자동으로 갱신된다. */
+const SEED_VER = '4';   // 4: 프로필에 debts 추가 (학자금 400만 / 신용대출 2,500만)
 function seedDemoAccounts() {
   const users = readJSON(LS.users, {});
   if (localStorage.getItem('csj.seedver') === SEED_VER) return;

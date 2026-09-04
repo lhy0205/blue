@@ -425,8 +425,18 @@ export function lumpsumScenarios(debts, goal, bp, monthlyRepay = 0, monthlySave 
 
 /* 상환 우선순위 조언 — 규칙 기반. 확정적 표현을 쓰지 않는다. */
 export function repayAdvice(debts, benchmark = SAVING_BENCHMARK_RATE) {
-  const list = (debts || []).filter((d) => d.balance > 0);
-  if (!list.length) return null;
+  const all = (debts || []).filter((d) => d.balance > 0);
+  if (!all.length) return null;
+
+  /* 금리를 모르는 부채로는 유불리를 말할 수 없다.
+     0% 로 두면 "서둘러 갚을 실익 없음"이 되는데, 실제로는 카드론일 수도 있다. */
+  const unknown = all.filter((d) => !d.rate);
+  const list = all.filter((d) => d.rate > 0);
+  if (!list.length) {
+    return { tone: 'unknown', headline: '금리를 입력하면 상환 순서를 계산해 드립니다',
+      body: `${unknown.map((d) => d.name || DEBT_LABEL[d.kind] || '대출').join(' · ')}의 금리가 없습니다. `
+        + '마이페이지에서 금리를 넣으면 갚는 것과 모으는 것 중 무엇이 유리한지 비교할 수 있습니다.' };
+  }
 
   const high = list.filter((d) => d.rate > benchmark);
   const low = list.filter((d) => d.rate <= benchmark);
@@ -445,7 +455,9 @@ export function repayAdvice(debts, benchmark = SAVING_BENCHMARK_RATE) {
         + `완납하면 이자는 줄지만 자기자본이 그만큼 빠져 목표 시점이 늦어질 수 있습니다. `
         + '최소 상환을 유지하면서 목표 자금을 모으는 쪽도 합리적인 선택입니다.' };
   }
+  const tail = unknown.length
+    ? ` (${unknown.map(nameOf).join(' · ')}는 금리가 없어 비교에서 제외했습니다)` : '';
   return { tone: 'mixed', headline: '금리가 높은 것부터 갚는 것이 순서입니다',
     body: `${high.map(nameOf).join(' · ')}(높은 금리)를 먼저 정리하고, `
-      + `${low.map(nameOf).join(' · ')}는 최소 상환을 유지하는 조합을 검토해 볼 수 있습니다.` };
+      + `${low.map(nameOf).join(' · ')}는 최소 상환을 유지하는 조합을 검토해 볼 수 있습니다.${tail}` };
 }
