@@ -110,6 +110,18 @@ export function simulate(bp, goal, monthlySaving) {
   }
 
   const monthsNeeded = Math.ceil(bp.additionalNeeded / monthlySaving);
+
+  /* 저축 여력이 거의 없으면 수백 개월짜리 숫자가 나온다.
+     'D-59961 (166년)' 같은 값을 화면에 내보내는 대신 계산 불가로 처리한다. */
+  if (monthsNeeded > 600) {
+    return {
+      monthsNeeded: Infinity, gapMonths: Infinity, level: 'hard', unreachable: true,
+      label: '현재 속도로는 도달 어려움',
+      message: '저축으로 돌아가는 금액이 거의 없어 도달 시점을 계산하기 어렵습니다. 상환 비중을 낮추거나 목표를 조정해 보세요.',
+      formula: `${money(bp.additionalNeeded)} ÷ 월 ${money(monthlySaving)} — 50년을 넘습니다`,
+    };
+  }
+
   const gap = monthsNeeded - target;
 
   let level, label, message;
@@ -212,4 +224,154 @@ export function monthlyPayment(principal, annualRate, years, type = 'amortizing'
   const n = (years || 30) * 12;
   const value = r === 0 ? Math.round(principal / n) : Math.round((principal * r) / (1 - Math.pow(1 + r, -n)));
   return { value, label: '월 상환액', note: `원리금균등 ${years || 30}년 상환 기준` };
+}
+
+/* ---------------------------------------------------------------------------
+ * 5. 부채 : "갚는 것"과 "대출 끼고 사는 것"
+ *
+ *    지금까지 청사진은 더하기만 있었다 — 보유자산 + 정책대출 + 저축.
+ *    기존 부채(학자금·신용대출)는 어디에도 빠지지 않았다.
+ *
+ *    두 축을 모두 다룬다.
+ *      갚기      : 일시급 상환 / 월 상환액 배분 → 이자 절감, 완제 시점
+ *      끼고 사기 : 신규 정책대출 실행 후 월 상환 부담(monthlyPayment)
+ *
+ *    debts = [{ kind, name, balance, rate, remaining_months }]
+ * ------------------------------------------------------------------------- */
+export const DEBT_LABEL = {
+  student: '학자금대출', credit: '신용대출', card: '카드론·현금서비스',
+  mortgage: '주택담보대출', jeonse: '전세자금대출', other: '기타 대출',
+};
+
+/* 부채 1건의 월 상환액.
+ * 남은 개월수를 알면 원리금균등, 모르면 이자만 내는 것으로 본다.
+ * (만기일시 신용대출이 여기 해당한다 — 원금이 저절로 줄지 않는다) */
+export function debtMonthlyDue(d) {
+  if (!d || !d.balance) return 0;
+  if (d.monthly_payment != null) return d.monthly_payment;
+  if (d.remaining_months) return monthlyPayment(d.balance, d.rate, d.remaining_months / 12).value;
+  return Math.round((d.balance * d.rate) / 12);
+}
+
+export function totalMonthlyDue(debts) {
+  return (debts || []).reduce((s, d) => s + debtMonthlyDue(d), 0);
+}
+
+/* 상환 계획 — extraMonthly 를 얹으면 완제 시점과 총이자가 줄어든다 */
+export function repaymentPlan(d, extraMonthly = 0) {
+  const base = debtMonthlyDue(d);
+  const pay = base + Math.max(0, extraMonthly);
+  const r = d.rate / 12;
+  const name = d.name || DEBT_LABEL[d.kind] || '대출';
+
+  /* 월 상환액이 이자에도 못 미치면 원금이 영원히 줄지 않는다 */
+  if (pay <= d.balance * r) {
+    return { name, kind: d.kind, balance: d.balance, rate: d.rate, monthlyPayment: pay,
+      monthsToClear: null, totalInterest: 0, interestOnly: true,
+      formula: `월 ${money(pay)} ≤ 월 이자 ${money(Math.round(d.balance * r))} — 원금이 줄지 않습니다` };
+  }
+  const months = r === 0
+    ? Math.ceil(d.balance / pay)
+    : Math.ceil(-Math.log(1 - (r * d.balance) / pay) / Math.log(1 + r));
+  const totalInterest = Math.max(0, Math.round(pay * months - d.balance));
+  return { name, kind: d.kind, balance: d.balance, rate: d.rate, monthlyPayment: pay,
+    monthsToClear: months, totalInterest, interestOnly: false,
+    formula: `${money(d.balance)} 을 월 ${money(pay)}씩 → ${months}개월, 총이자 ${money(totalInterest)}` };
+}
+
+/* 일시급 상환 + 월 상환을 months 개월 동안 굴린 결과.
+ * 금리가 높은 것부터 갚는다(avalanche) — 총이자가 가장 적어지는 순서다. */
+export function applyRepayment(debts, { lumpsum = 0, monthlyRepay = 0, months = 0 } = {}) {
+  const items = (debts || []).map((d) => ({ ...d, _bal: d.balance }));
+  let cash = Math.max(0, lumpsum);
+  let interestPaid = 0;
+  let clearedMonth = null;
+
+  /* 1) 일시급 — 금리 높은 것부터 */
+  items.sort((a, b) => b.rate - a.rate);
+  for (const it of items) {
+    if (cash <= 0) break;
+    const pay = Math.min(cash, it._bal);
+    it._bal -= pay; cash -= pay;
+  }
+  const lumpsumUsed = Math.max(0, lumpsum) - cash;
+  if (items.every((it) => it._bal <= 0)) clearedMonth = 0;   // 일시급만으로 완제
+
+  /* 2) 매월 상환 */
+  for (let m = 1; m <= months; m++) {
+    let budget = monthlyRepay;
+    for (const it of items) {
+      if (it._bal <= 0) continue;
+      const interest = (it._bal * it.rate) / 12;
+      interestPaid += interest;
+      const pay = Math.min(budget, it._bal + interest);
+      budget -= pay;
+      it._bal = Math.max(0, it._bal + interest - pay);
+      if (budget <= 0) break;
+    }
+    if (clearedMonth === null && items.every((it) => it._bal <= 0)) clearedMonth = m;
+  }
+
+  /* 완제된 뒤에는 상환에 쓰던 돈이 그대로 남는다.
+     이걸 저축으로 돌려주지 않으면 '갚을수록 목표가 무한히 멀어지는' 계산이 된다. */
+  const freedTotal = clearedMonth !== null
+    ? Math.round(monthlyRepay * Math.max(0, months - clearedMonth)) : 0;
+
+  const remainingBalance = Math.round(items.reduce((s, it) => s + it._bal, 0));
+  const monthlyDueAfter = totalMonthlyDue(
+    items.filter((it) => it._bal > 0).map((it) => ({ ...it, balance: Math.round(it._bal) })),
+  );
+
+  /* 아무것도 안 갚았을 때 붙었을 이자와 비교 */
+  const doNothing = (debts || []).reduce(
+    (s, d) => s + (d.balance * d.rate / 12) * months, 0);
+
+  return {
+    lumpsumUsed, remainingBalance, clearedMonth, freedTotal,
+    interestPaid: Math.round(interestPaid),
+    interestSaved: Math.max(0, Math.round(doNothing - interestPaid)),
+    monthlyDueAfter,
+    formula: lumpsumUsed
+      ? `일시급 ${money(lumpsumUsed)} + 월 ${money(monthlyRepay)} × ${months}개월 → 잔액 ${money(remainingBalance)}`
+      : `월 ${money(monthlyRepay)} × ${months}개월 → 잔액 ${money(remainingBalance)}`,
+  };
+}
+
+/* 상환 vs 저축 배분 비교 — 같은 월 가용액을 어떻게 나눌지 */
+export function allocationScenarios(debts, goal, bp, monthlyAvailable, lumpsum = 0) {
+  const months = goal.target_months || 1;
+  const minDue = Math.min(totalMonthlyDue(debts), monthlyAvailable);
+  const surplus = Math.max(0, monthlyAvailable - minDue);
+
+  return [
+    { key: 'save',    label: '저축 우선',  ratio: 0,   desc: '최소 상환만 하고 자기자본을 모읍니다' },
+    { key: 'balance', label: '병행',      ratio: 0.5, desc: '최소 상환 + 여유분을 절반씩 나눕니다' },
+    { key: 'repay',   label: '상환 우선',  ratio: 1,   desc: '빚부터 정리하고 그다음 저축합니다' },
+  ].map((s) => {
+    const toRepay = minDue + Math.round(surplus * s.ratio);
+    const toSave = monthlyAvailable - toRepay;
+    const rep = applyRepayment(debts, { lumpsum, monthlyRepay: toRepay, months });
+    const equity = Math.max(0, (bp.currentAsset - rep.lumpsumUsed) + toSave * months);
+    const reachable = equity + bp.policyLoan + bp.policyBenefit + bp.govMatch;
+    const shortfall = Math.max(0, bp.target + bp.acquisitionCost - reachable);
+    return {
+      ...s, toRepay, toSave,
+      clearedMonth: rep.clearedMonth, interestPaid: rep.interestPaid,
+      remainingDebt: rep.remainingBalance,
+      equity, shortfall, reachable: shortfall <= 0,
+    };
+  });
+}
+
+/* 부채 요약 — 화면 상단 카드용 */
+export function debtSummary(debts, extraMonthly = 0) {
+  const list = (debts || []).filter((d) => d && d.balance > 0);
+  if (!list.length) return { has: false, totalBalance: 0, totalMonthly: 0, items: [] };
+  const totalBalance = list.reduce((s, d) => s + d.balance, 0);
+  const weightedRate = list.reduce((s, d) => s + d.balance * d.rate, 0) / totalBalance;
+  return {
+    has: true, totalBalance, weightedRate,
+    totalMonthly: totalMonthlyDue(list),
+    items: list.map((d) => repaymentPlan(d, extraMonthly)),
+  };
 }

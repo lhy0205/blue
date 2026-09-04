@@ -4,7 +4,8 @@
  * ========================================================================== */
 import * as S from './store.js';
 import { judgeAll, resolveCombination, filterByGoal, VERDICT, CODE, koreanAge } from './rules.js';
-import { buildBlueprint, feasibility, simulate, tradeoff, progress, money, monthlyPayment, ddayFrom } from './calc.js';
+import { buildBlueprint, feasibility, simulate, tradeoff, progress, money, monthlyPayment, ddayFrom,
+         debtSummary, applyRepayment, totalMonthlyDue } from './calc.js';
 import * as FT from './fintox.js';
 import * as CR from './credit.js';
 import { GOAL_LABEL } from './goalparse.js';
@@ -419,25 +420,41 @@ function viewStep3(v) {
   let simTarget = state.simTarget || g.target_amount;
   let saving = g.monthly_saving || 0;
 
+  /* ── 부채 : 갚는 축 ─────────────────────────────────────────────────
+     debts 는 프로필에 있다. 없으면 상환 UI 전체를 숨긴다. */
+  const debts = (state.profile && state.profile.debts) || [];
+  const dSum = debtSummary(debts);
+  const minDue = totalMonthlyDue(debts);
+  let lump = 0;                 // 일시급 상환액 (보유 현금에서)
+  let repay = Math.min(minDue, saving);   // 월 상환액 (최소 상환에서 시작)
+
   /* 목표금액 / 월저축액을 바꿨을 때 전체를 다시 계산한다.
      목표금액이 바뀌면 정책 판정 자체가 달라진다(예: 주택가격 상한 조건). */
-  function planFor(targetAmount, monthlySaving) {
-    const gg = { ...g, target_amount: targetAmount };
+  function planFor(targetAmount, monthlySaving, lumpsum = 0, monthlyRepay = 0) {
+    /* 일시급 상환은 보유 현금에서 빠져나간다 — 자기자본이 그만큼 줄어든다.
+       월 상환액은 저축으로 갈 돈을 나눠 쓰는 것이므로 monthlySaving 이 이미 차감된 값이다. */
+    const months = g.target_months || 1;
+    const gg = { ...g, target_amount: targetAmount,
+      current_asset: Math.max(0, (g.current_asset || 0) - lumpsum) };
     const judged = judgeAll(filterByGoal(state.policies, g.goal_type), state.profile, gg, new Date());
     const chosen = judged.filter((r) => picked.includes(r.policy_id));
     const comb = resolveCombination(chosen, state.groups);
     const bp = buildBlueprint(gg, comb.applied);
     const sim = simulate(bp, gg, monthlySaving);
     const fe = feasibility(gg, bp, monthlySaving);
+    const rep = applyRepayment(debts, { lumpsum, monthlyRepay, months });
     return {
-      gg, judged, comb, bp, sim, fe,
+      gg, judged, comb, bp, sim, fe, rep,
       dday: ddayFrom(g.started_on, sim.monthsNeeded),
       targetDday: ddayFrom(g.started_on, g.target_months),
     };
   }
 
-  const base = planFor(g.target_amount, saving || 1);
+  const base = planFor(g.target_amount, Math.max(1, (saving || 1) - repay), lump, repay);
   if (!saving) saving = Math.max(100000, base.bp.recommendedMonthly);
+
+  /* 일시급 상환 상한 = 보유 현금과 총 부채 중 작은 쪽 */
+  const lumpMax = Math.min(g.current_asset || 0, dSum.totalBalance || 0);
 
   const step = g.target_amount >= 100000000 ? 10000000 : 1000000;
   const tMin = Math.max(step, Math.round(g.target_amount * 0.4 / step) * step);
@@ -474,13 +491,41 @@ function viewStep3(v) {
             style="width:100%;accent-color:var(--blue);margin-top:6px">
           <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted2)">
             <span>10만 원</span><span>300만 원</span></div>
+          ${dSum.has ? `<div style="font-size:11px;color:var(--muted2);margin-top:4px">
+            저축과 대출 상환에 나눠 쓰는 금액입니다.</div>` : ''}
         </div>
+
+        ${dSum.has ? `
+        <div style="margin-top:18px;padding-top:18px;border-top:1px dashed var(--bd)">
+          <div class="mini" style="margin-bottom:10px">DEBT · 대출금 갚기</div>
+
+          <div style="display:flex;justify-content:space-between;align-items:baseline">
+            <label style="font-size:12px;font-weight:700;color:var(--muted)">지금 일시급으로 갚기</label>
+            <b id="lv" style="font-size:17px;color:var(--navy)">${num(lump)}원</b>
+          </div>
+          <input type="range" id="lSl" min="0" max="${lumpMax}" step="100000" value="${lump}"
+            style="width:100%;accent-color:var(--red);margin-top:6px">
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted2)">
+            <span>0원</span><span>${money(lumpMax)}</span></div>
+          <div style="font-size:11px;color:var(--muted2);margin-top:4px">
+            보유 현금 ${money(g.current_asset || 0)} 중에서 지금 상환합니다. 자기자본이 그만큼 줄어듭니다.</div>
+
+          <div style="margin-top:16px;display:flex;justify-content:space-between;align-items:baseline">
+            <label style="font-size:12px;font-weight:700;color:var(--muted)">월 상환액</label>
+            <b id="rv" style="font-size:17px;color:var(--navy)">${num(repay)}원</b>
+          </div>
+          <input type="range" id="rSl" min="${minDue}" max="${saving}" step="10000" value="${repay}"
+            style="width:100%;accent-color:var(--red);margin-top:6px">
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted2)">
+            <span>최소 ${money(minDue)}</span><span>${money(saving)}</span></div>
+          <div id="splitBox" style="margin-top:8px"></div>
+        </div>` : ''}
 
         <div id="ddayBox" style="margin-top:18px"></div>
         <div id="simres" style="margin-top:12px"></div>
       </div>
 
-      <div id="rightCol"></div>
+      <div><div id="rightCol"></div>${dSum.has ? '<div id="debtBox" style="margin-top:14px"></div>' : ''}</div>
     </div>
 
     <div style="margin-top:20px">
@@ -493,11 +538,26 @@ function viewStep3(v) {
 
   /* ------------------------------ 렌더 ---------------------------------- */
   function redraw() {
-    const cur = planFor(simTarget, saving);
+    /* 월 가용액을 상환/저축으로 나눈다. 상환분은 저축에서 빠진다. */
+    repay = Math.max(minDue, Math.min(repay, saving));
+    const netSaving = Math.max(0, saving - repay);
+    /* 완제 이후에는 상환에 쓰던 돈이 저축으로 돌아온다.
+       목표 기간 전체로 평균 낸 '실효 저축액'으로 도달 시점을 계산한다. */
+    const months0 = g.target_months || 1;
+    const pre = applyRepayment(debts, { lumpsum: lump, monthlyRepay: repay, months: months0 });
+    const effSaving = netSaving + Math.round(pre.freedTotal / months0);
+    const cur = planFor(simTarget, effSaving, lump, repay);
     const changed = simTarget !== g.target_amount;
 
     $('#tv').textContent = money(simTarget);
     $('#sv').textContent = num(saving) + '원';
+    if (dSum.has) {
+      $('#lv').textContent = num(lump) + '원';
+      $('#rv').textContent = num(repay) + '원';
+      const rs = $('#rSl');
+      if (rs && Number(rs.max) !== saving) { rs.max = saving; rs.value = repay; }
+      renderDebt(cur, netSaving, effSaving);
+    }
 
     $('#explore').innerHTML = changed ? `
       <div class="warn" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
@@ -600,6 +660,65 @@ function viewStep3(v) {
     bindDynamic();
   }
 
+  /* 부채 — 상환 결과와 목표 영향 */
+  function renderDebt(cur, netSaving, effSaving) {
+    const r = cur.rep;
+    /* clearedMonth === 0 은 '일시급만으로 즉시 완제'다. 0 은 falsy 라서
+       `r.clearedMonth ? ...` 로 쓰면 이 경우가 조용히 다른 분기로 샌다. */
+    const cleared = r.clearedMonth === 0 ? '지금 일시급으로 전액 상환'
+      : r.clearedMonth ? `${r.clearedMonth}개월 뒤 완제`
+      : (r.remainingBalance > 0 ? `목표 시점에 ${money(r.remainingBalance)} 남음` : '완제');
+    /* 상환을 전혀 늘리지 않았을 때와 비교해서 목표가 얼마나 밀리는지 */
+    const base0 = applyRepayment(debts, { lumpsum: 0, monthlyRepay: minDue, months: g.target_months || 1 });
+    const noRepay = planFor(simTarget,
+      Math.max(0, saving - minDue) + Math.round(base0.freedTotal / (g.target_months || 1)), 0, minDue);
+    const dMonths = (isFinite(cur.sim.monthsNeeded) && isFinite(noRepay.sim.monthsNeeded))
+      ? cur.sim.monthsNeeded - noRepay.sim.monthsNeeded : null;
+
+    $('#splitBox').innerHTML = `
+      <div style="display:flex;gap:8px">
+        <div style="flex:1;background:var(--sky);border:1px solid var(--blue-bd);border-radius:10px;padding:8px 10px">
+          <div style="font-size:10px;font-weight:800;color:var(--blue)">저축</div>
+          <div style="font-size:14px;font-weight:800;color:var(--navy)">${num(netSaving)}원</div></div>
+        <div style="flex:1;background:#fff5f5;border:1px solid #f2c7c7;border-radius:10px;padding:8px 10px">
+          <div style="font-size:10px;font-weight:800;color:var(--red)">상환</div>
+          <div style="font-size:14px;font-weight:800;color:var(--navy)">${num(repay)}원</div></div>
+      </div>
+      ${r.clearedMonth !== null && r.freedTotal > 0 ? `<div style="font-size:11px;color:var(--muted2);margin-top:6px">
+        완제 후 상환액이 저축으로 돌아와 실효 저축액은 월 ${num(effSaving)}원입니다.</div>` : ''}`;
+
+    $('#debtBox').innerHTML = `
+      <div class="card" style="box-shadow:none">
+        <div class="mini">DEBT · 대출금 갚기</div>
+        <div style="font-size:17px;font-weight:800;color:var(--navy);margin:6px 0 10px">
+          보유 부채 ${money(dSum.totalBalance)}</div>
+
+        <div style="display:grid;gap:7px">
+          ${dSum.items.map((it) => `<div style="display:flex;justify-content:space-between;gap:10px;font-size:12px">
+            <span style="color:var(--muted)">${esc(it.name)} · 연 ${(it.rate * 100).toFixed(1)}%</span>
+            <b style="color:var(--navy)">${money(it.balance)}</b></div>
+            <div style="font-size:11px;color:var(--muted2);margin-top:-3px">${esc(it.interestOnly
+              ? '만기일시 · 이자만 내면 원금이 줄지 않습니다'
+              : `현재 속도로 ${it.monthsToClear}개월 · 총이자 ${money(it.totalInterest)}`)}</div>`).join('')}
+        </div>
+
+        <div class="note" style="margin-top:12px">
+          <b>${esc(cleared)}</b>
+          ${r.interestSaved > 0 ? ` · 이자 <b>${money(r.interestSaved)}</b> 절감` : ''}
+          <div style="font-size:11px;opacity:.85;margin-top:6px">🧮 ${esc(r.formula)}</div>
+        </div>
+
+        <div class="${dMonths === null || dMonths > 0 ? 'warn' : 'note'}" style="margin-top:10px">
+          목표 도달 시점 영향:
+          <b>${dMonths === null ? '계산 불가 — 상환 비중이 너무 큽니다'
+            : dMonths > 0 ? `약 ${dMonths}개월 지연` : dMonths < 0 ? `약 ${Math.abs(dMonths)}개월 단축` : '변화 없음'}</b>
+          <div style="font-size:11px;opacity:.85;margin-top:4px">
+            상환에 쓴 돈은 자기자본에서 빠지므로 목표는 늦어질 수 있습니다.
+            대신 이자 부담과 잔여 부채가 줄어듭니다. 어느 쪽을 우선할지는 선택입니다.</div>
+        </div>
+      </div>`;
+  }
+
   /* 재렌더되는 영역의 이벤트 재바인딩 */
   function bindDynamic() {
     $('#applyTarget')?.addEventListener('click', async () => {
@@ -628,6 +747,8 @@ function viewStep3(v) {
   /* 슬라이더 — 드래그 중에는 화면만, 놓았을 때 저장 */
   $('#tSl').addEventListener('input', (e) => { simTarget = Number(e.target.value); state.simTarget = simTarget; redraw(); });
   $('#sSl').addEventListener('input', (e) => { saving = Number(e.target.value); redraw(); });
+  $('#lSl')?.addEventListener('input', (e) => { lump = Number(e.target.value); redraw(); });
+  $('#rSl')?.addEventListener('input', (e) => { repay = Number(e.target.value); redraw(); });
   $('#sSl').addEventListener('change', async () => {
     const cur = planFor(simTarget, saving);
     await S.updateGoal(g.id, { monthly_saving: saving });

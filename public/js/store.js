@@ -82,6 +82,7 @@ function seedDemoAccounts() {
     nickname: '김민재', birth_ymd: '2000-03-15', annual_income: 32000000, net_asset: 20000000,
     job_code: '0013001', school_code: '0049007', major_code: '0011003', marriage_code: '0055002',
     sbiz_codes: ['0014001'], zip_cd: '11440', region_name: '서울특별시 마포구', is_homeowner: false, household_size: 1,
+    debts: [{ kind: 'student', balance: 4000000, rate: 0.017, remaining_months: 48 }],
   }, {
     raw_input: '2년 뒤 마포구에 1억 전세로 독립하고 싶어. 지금 600만 원 있어.',
     goal_type: 'jeonse', target_amount: 100000000, target_months: 24,
@@ -95,6 +96,8 @@ function seedDemoAccounts() {
     nickname: '이지은', birth_ymd: '1993-06-10', annual_income: 84000000, net_asset: 250000000,
     job_code: '0013001', school_code: '0049007', major_code: '0011002', marriage_code: '0055001',
     sbiz_codes: [], zip_cd: '41170', region_name: '경기도 안양시', is_homeowner: false, household_size: 2,
+    /* 만기일시 신용대출 — remaining_months 가 없으면 이자만 내는 것으로 계산된다 */
+    debts: [{ kind: 'credit', balance: 25000000, rate: 0.052 }],
   }, {
     raw_input: '1년 뒤에 경기권 6억 아파트를 사고 싶어요. 금융자산은 2억 정도 됩니다.',
     goal_type: 'purchase', target_amount: 600000000, target_months: 12,
