@@ -5,7 +5,7 @@
 import * as S from './store.js';
 import { judgeAll, resolveCombination, filterByGoal, VERDICT, CODE, koreanAge } from './rules.js';
 import { buildBlueprint, feasibility, simulate, tradeoff, progress, money, monthlyPayment, ddayFrom,
-         debtSummary, applyRepayment, totalMonthlyDue } from './calc.js';
+         debtSummary, applyRepayment, totalMonthlyDue, DEBT_LABEL } from './calc.js';
 import * as FT from './fintox.js';
 import * as CR from './credit.js';
 import { GOAL_LABEL } from './goalparse.js';
@@ -352,6 +352,11 @@ function viewStep2(v) {
   const g = state.goal;
   const pct = (n) => Math.min(100, Math.round((n / Math.max(1, bp.target)) * 100));
 
+  /* 보유 부채 — 목표 자금 계산과는 별개 계정으로 다룬다.
+     목표 자기자본에서 빼버리면 "빚이 있으니 전세를 못 간다"는 잘못된 판정이 된다.
+     대신 순자산과 상환 계획을 함께 보여주고, 실제 상환은 STEP 3 에서 조절한다. */
+  const dSum2 = debtSummary((state.profile && state.profile.debts) || []);
+
   v.append(el(`<section class="card">
     <div class="card-h"><div class="card-t">STEP 2 · 필요한 돈 계산하기</div>
       <span class="tag">${comb.applied.filter((a) => a.applied).map((a) => esc(a.policy.short_name)).join(' + ') || '선택 없음'}</span></div>
@@ -360,7 +365,8 @@ function viewStep2(v) {
       <div class="stat"><div class="l">목표 금액</div><div class="v">${money(bp.target)}</div></div>
       <div class="stat"><div class="l">정책금융 활용가능 예상액</div><div class="v blue">${money(bp.policyLoan)}</div><div class="f">확정 아님 · 검토 가능</div></div>
       <div class="stat"><div class="l">목표 자기자본</div><div class="v">${money(bp.requiredEquity)}</div></div>
-      <div class="stat"><div class="l">현재 보유 자산</div><div class="v green">${money(bp.currentAsset)}</div></div>
+      <div class="stat"><div class="l">현재 보유 자산</div><div class="v green">${money(bp.currentAsset)}</div>
+        ${dSum2.has ? `<div class="f">부채 ${money(dSum2.totalBalance)} 별도</div>` : ''}</div>
     </div>
 
     <div style="background:var(--slate-bg);border-radius:12px;padding:18px;margin-top:16px">
@@ -376,6 +382,31 @@ function viewStep2(v) {
         <div class="bar"><i style="width:${pct(val)}%;background:${c}"></i></div>
       </div>`).join('')}
     </div>
+
+    ${dSum2.has ? `
+    <div class="card" style="margin-top:16px;box-shadow:none;border-color:#f2c7c7;background:#fffafa">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
+        <div style="font-size:14px;font-weight:800;color:var(--navy)">보유 부채</div>
+        <div style="font-size:18px;font-weight:800;color:var(--red)">${money(dSum2.totalBalance)}</div>
+      </div>
+      <div style="display:grid;gap:6px;margin-top:10px">
+        ${dSum2.items.map((it) => `<div style="display:flex;justify-content:space-between;font-size:12.5px">
+          <span style="color:var(--muted)">${esc(it.name)} · 연 ${(it.rate * 100).toFixed(1)}% · 월 ${num(it.monthlyPayment)}원</span>
+          <b style="color:var(--navy)">${money(it.balance)}</b></div>
+          <div style="font-size:11px;color:var(--muted2);margin-top:-2px">${esc(it.interestOnly
+            ? '만기일시 · 이자만 내면 원금이 줄지 않습니다'
+            : `현재 속도로 ${it.monthsToClear}개월 · 총이자 ${money(it.totalInterest)}`)}</div>`).join('')}
+      </div>
+      <div class="note" style="margin-top:12px">
+        부채는 <b>목표 자금 계산과 분리</b>해서 관리합니다.
+        빚이 있다고 전세 자체가 불가능해지는 것은 아니기 때문입니다.
+        다만 순자산은 <b>${money(Math.max(0, bp.currentAsset - dSum2.totalBalance))}</b>
+        (보유 ${money(bp.currentAsset)} − 부채 ${money(dSum2.totalBalance)})이고,
+        매달 ${num(dSum2.totalMonthly)}원이 상환에 나갑니다.
+        <div style="font-size:11px;opacity:.85;margin-top:6px">
+          얼마를 갚고 얼마를 모을지는 <b>STEP 3 시뮬레이션</b>에서 조절할 수 있습니다.</div>
+      </div>
+    </div>` : ''}
 
     <div class="card" style="margin-top:16px;box-shadow:0 4px 16px rgba(37,99,235,.05);border-color:#e0e7ff">
       ${trustBar()}
@@ -1466,6 +1497,9 @@ function viewMypage(v) {
   const rows = [
     ['이름', p.nickname], ['만 나이', koreanAge(p.birth_ymd) + '세'],
     ['세전 연소득', money(p.annual_income)], ['순자산', p.net_asset != null ? money(p.net_asset) : '미입력'],
+    ['보유 부채', (p.debts && p.debts.length)
+      ? p.debts.map((d) => `${DEBT_LABEL[d.kind] || '대출'} ${money(d.balance)} (연 ${(d.rate * 100).toFixed(1)}%)`).join(' · ')
+      : '없음'],
     ['취업 형태', CODE.job[p.job_code]], ['학력', CODE.school[p.school_code]],
     ['결혼 상태', CODE.marriage[p.marriage_code]],
     ['거주지', p.region_name || regionName(p.zip_cd)],
