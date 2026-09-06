@@ -115,14 +115,52 @@ function route() {
   window.scrollTo(0, 0);
 }
 
+/* 잠긴 단계를 눌렀을 때 어디로 보내고 무엇을 안내할지.
+   'disabled' 로 막아두면 눌러도 아무 반응이 없어서 사용자는 고장으로 받아들인다.
+   대신 클릭을 받아 막고 있는 단계로 데려가고 할 일을 알려준다. */
+function lockInfo(id) {
+  const needSelect = !done.step1;   // STEP 1 에서 정책을 하나도 안 골랐다
+  const needFinal = !done.step3;    // STEP 3 에서 실행할 정책을 확정하지 않았다
+
+  if ((id === 'step2' || id === 'step3') && needSelect) {
+    return { go: 'step1',
+      msg: 'STEP 1에서 적용할 정책을 하나 이상 선택하면 STEP 2·3이 열립니다.' };
+  }
+  if (id === 'step5' && needFinal) {
+    return needSelect
+      ? { go: 'step1',
+          msg: 'STEP 5는 실행할 정책을 확정해야 열립니다. 먼저 STEP 1에서 정책을 선택해 주세요.' }
+      : { go: 'step3',
+          msg: 'STEP 3 아래 정책 카드에서 “이 정책으로 확정”을 누르면 STEP 5가 열립니다.' };
+  }
+  return null;
+}
+
+function showStepHint(msg) {
+  const box = $('#stepHint');
+  if (!box) return;
+  box.innerHTML = `<div class="warn" style="margin-top:10px">🔒 ${esc(msg)}</div>`;
+  clearTimeout(showStepHint._t);
+  showStepHint._t = setTimeout(() => { box.innerHTML = ''; }, 7000);
+}
+
 function renderSteps(active) {
   $('#steps').innerHTML = STEPS.map((s) => {
-    const locked = (s.id === 'step2' && !done.step1) || (s.id === 'step3' && !done.step2) || (s.id === 'step5' && !done.step3);
-    return `<button data-go="${s.id}" class="${active === s.id ? 'on' : ''}" ${locked ? 'disabled title="이전 단계를 먼저 완료해 주세요"' : ''}>
-      <span class="n">${s.n}</span>${s.title}</button>`;
+    const lock = lockInfo(s.id);
+    return `<button data-go="${s.id}"
+      class="${active === s.id ? 'on' : ''}${lock ? ' locked' : ''}"
+      aria-disabled="${lock ? 'true' : 'false'}"
+      ${lock ? `data-lock="${lock.go}" data-lockmsg="${esc(lock.msg)}" title="${esc(lock.msg)}"` : ''}>
+      <span class="n">${s.n}</span>${s.title}${lock ? ' <span class="lk">🔒</span>' : ''}</button>`;
   }).join('');
-  $('#steps').querySelectorAll('[data-go]').forEach((b) =>
-    b.addEventListener('click', () => (location.hash = '#' + b.dataset.go)));
+  $('#steps').querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => {
+    if (b.dataset.lock) {
+      location.hash = '#' + b.dataset.lock;
+      showStepHint(b.dataset.lockmsg);
+      return;
+    }
+    location.hash = '#' + b.dataset.go;
+  }));
 }
 
 function renderGoalbar() {
