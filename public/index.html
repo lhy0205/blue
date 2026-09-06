@@ -41,6 +41,8 @@
     내가 가진 돈에 <b>활용할 수 있는 정책</b>까지 더해서 실제로 가능한지 계산해 드립니다.
   </p>
 
+  <div id="replaceNotice"></div>
+
   <div class="search">
     <input id="q" placeholder="예: 2년 뒤 마포구에 1억 전세로 독립하고 싶어. 지금 600만 원 있어." autocomplete="off">
     <button class="btn" id="go">제출하기</button>
@@ -84,10 +86,28 @@ let parsedGoal = null;
 const { mode } = await initStore();
 const user = await currentUser();
 
-/* 재접속 라우팅: 목표가 있으면 곧바로 목표 대시보드로 */
+/* 재접속 라우팅: 목표가 있으면 곧바로 목표 대시보드로.
+   단 '목표 바꾸기'(?new=1)로 일부러 들어온 경우는 되돌려보내지 않는다.
+   이 분기가 없으면 목표 변경 자체가 불가능하다 — 눌러도 대시보드로 튕긴다. */
+const wantsNew = new URLSearchParams(location.search).has('new');
+let currentGoal = null;
 if (user) {
-  const goal = await getActiveGoal();
-  if (goal) location.replace('./app.html#dashboard');
+  currentGoal = await getActiveGoal();
+  if (currentGoal && !wantsNew) location.replace('./app.html#dashboard');
+}
+
+/* 목표를 바꾸러 들어온 경우, 기존 목표가 어떻게 되는지 미리 알려준다.
+   createGoal() 은 새 목표를 만들면서 기존 목표를 archived 로 돌린다.
+   모르고 누르면 정책 선택·체크리스트가 통째로 뒤로 밀린다. */
+if (currentGoal && wantsNew) {
+  const esc0 = (t) => String(t ?? '').replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  $('#replaceNotice').innerHTML = `<div class="warn" style="margin:0 0 14px;text-align:left">
+    새 목표를 만들면 기존 목표는 <b>히스토리로 보관</b>되고, 거기서 고른 정책과 체크리스트도 함께 넘어갑니다.
+    <div style="font-size:12px;opacity:.85;margin-top:6px">현재 목표 · ${esc0(currentGoal.raw_input || '')}</div>
+    <div style="margin-top:10px"><a href="./app.html#dashboard"
+      style="font-size:12px;font-weight:700;color:var(--blue,#2563eb)">← 그대로 두고 돌아가기</a></div>
+  </div>`;
 }
 
 const prof = user ? await getProfile() : null;

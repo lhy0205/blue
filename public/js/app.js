@@ -181,7 +181,7 @@ function renderGoalbar() {
            </span>`
         : `<span class="gb-chip">보유 부채 <b>없음</b></span>`}
     </span>
-    <a class="edit" href="./index.html">목표 바꾸기</a>
+    <a class="edit" href="./index.html?new=1">목표 바꾸기</a>
   </div>`;
 }
 
