@@ -1,0 +1,300 @@
+/* ============================================================================
+ * 청사진 · 메인 = 포리의 숲
+ *
+ * 렌더링된 숲 일러스트 한 장 위에 투명 버튼을 얹는다.
+ * 좌표는 전부 '무대(.stage)' 기준 퍼센트다.
+ *
+ * ⚠ 좌표가 퍼센트이므로 무대 비율이 그림 비율(1635:962)과 조금이라도
+ *   달라지면 클릭 영역이 그림에서 떨어져 나간다. 그래서 cover 로 잘라내지
+ *   않고 그림 전체가 보이도록 비율을 고정한다.
+ * ========================================================================== */
+
+:root{
+  --forest:#112615;
+  --ink:#24331f;
+  --muted:#64705d;
+  --ring:0 0 0 2px rgba(255,255,255,.9), 0 12px 34px rgba(0,0,0,.18);
+}
+
+body.world-body{
+  margin:0;background:var(--forest);overflow:hidden;
+  font-family:'Pretendard Variable',Pretendard,-apple-system,'Malgun Gothic',sans-serif
+}
+
+/* ───────────────────────── 무대 ───────────────────────── */
+.hero{
+  position:relative;width:100vw;height:100vh;height:100dvh;overflow:hidden;
+  background:var(--forest)
+}
+.stage{
+  /* 화면을 채우되, 가로로 8% 넘게는 키우지 않는다.
+     더 키우면 왼쪽 카피와 댐이 화면 밖으로 밀려난다. */
+  width:max(100vw, min(calc(100vh * 1635 / 962), calc(100vw * 1.08)));
+  aspect-ratio:1635 / 962;
+
+  /* 오른쪽 끝에 붙인다 — 잘리는 쪽은 언제나 왼쪽(나무 그늘)이고,
+     계정 버튼·랜턴·장작이 있는 오른쪽은 항상 살아 있다.
+     grid 의 justify-items:end 로는 안 된다. 항목이 칸보다 크면
+     브라우저가 '내용이 잘리지 않게' 시작점으로 되돌려 버린다. */
+  position:absolute;right:0;top:50%;transform:translateY(-50%)
+}
+/* 화면이 그림보다 옆으로 길면 세로가 잘린다.
+   가운데 정렬이면 위아래가 같이 잘려 계정 버튼이 날아간다 — 위를 고정한다. */
+@media (min-aspect-ratio:1635/962){ .stage{top:0;transform:none} }
+.scene{position:absolute;inset:0;width:100%;height:100%;display:block;
+  pointer-events:none;user-select:none;-webkit-user-drag:none}
+
+/* ───────────────────────── 핫스팟 ─────────────────────────
+   보이지 않지만 버튼이다. 키보드로도 닿아야 한다.
+
+   모든 핫스팟은 무대 전체를 덮은 뒤 clip-path 로 제 모양만 남긴다.
+   그래야 좌표를 전부 '무대 기준 %' 하나로 쓸 수 있고, 무엇보다
+   클릭 영역과 하이라이트가 그림 속 물건의 실루엣과 같아진다.
+   (clip-path 는 히트 테스트도 함께 자른다 — 잘린 밖은 아래 요소가 받는다)
+
+   DOM 순서 = 쌓임 순서다. 겹치는 것은 '안쪽'이 뒤에 와야 이긴다:
+   댐 → 비버,  집 → 간판 · 문. */
+.hotspot{
+  position:absolute;inset:0;width:100%;height:100%;
+  border:0;padding:0;cursor:pointer;z-index:10;
+
+  /* 호버하면 '흰 막이 덮이는' 게 아니라 '물건이 밝아져야' 한다.
+     그래서 같은 숲 그림을 한 장 더 깔고 실루엣만큼만 남긴 뒤,
+     평소에는 투명하게 두었다가 호버할 때 밝기를 올린다.
+     같은 파일이라 추가로 내려받는 것은 없다. 무대와 크기가 같으므로
+     배경이 원본 그림과 픽셀 단위로 겹친다. */
+  background-image:url(../img/forest.jpg);
+  background-image:image-set(url(../img/forest.webp) type("image/webp"),
+                             url(../img/forest.jpg)  type("image/jpeg"));
+  background-size:100% 100%;
+  background-repeat:no-repeat;
+  opacity:0;
+  transition:opacity .2s ease, filter .2s ease
+}
+/* clip-path 는 box-shadow·outline 까지 잘라낸다.
+   그래서 테두리 대신 drop-shadow 로 실루엣을 따라 빛나게 한다. */
+.hotspot:hover{
+  opacity:1;
+  filter:brightness(1.18) saturate(1.14) drop-shadow(0 0 9px rgba(255,255,255,.9))
+}
+.hotspot:focus-visible{
+  opacity:1;outline:none;
+  filter:brightness(1.26) saturate(1.2) drop-shadow(0 0 13px #fff)
+}
+/* '클릭할 수 있는 곳 보기' — 15개를 한꺼번에 밝히면 장면이 뭉개진다.
+   여기서는 영역만 드러낸다. */
+body.show-map .hotspot{
+  opacity:1;background-image:none;background-color:rgba(255,255,255,.2);
+  filter:drop-shadow(0 0 5px rgba(255,255,255,.85))
+}
+
+.label{
+  position:absolute;z-index:22;padding:7px 12px;border-radius:13px;
+  background:rgba(255,255,255,.95);color:var(--ink);
+  font-size:12.5px;font-weight:800;letter-spacing:-.02em;white-space:nowrap;
+  box-shadow:0 10px 26px rgba(0,0,0,.18);translate:-50% 0;
+  opacity:0;transform:translateY(8px);transition:.18s ease;pointer-events:none
+}
+.hotspot:hover + .label,
+.hotspot:focus-visible + .label,
+body.show-map .label{opacity:1;transform:translateY(0)}
+
+/* ── 모양: 그림 위 격자로 실측한 윤곽 ──────────────────────────
+   좌표는 전부 무대 기준 퍼센트다. */
+
+/* 알약 버튼 두 개는 그림에서도 알약이다 */
+.h-login  {clip-path:inset(2.4% 10.5% 92.4% 82.4% round 99px)}
+.h-signup {clip-path:inset(2.4% 1.8% 92.4% 90.2% round 99px)}
+
+/* 카피 블록 — 제목 두 줄 + 설명 두 줄. 설명이 더 짧아 ㄱ자다 */
+.h-copy   {clip-path:polygon(18.8% 19.5%, 44.5% 19.5%, 44.5% 32%, 36% 32%, 36% 41.5%, 18.8% 41.5%)}
+
+/* 댐 — 나뭇가지 더미 */
+.h-dam   {clip-path:polygon(4.59% 48.65%, 4.22% 56.55%, 6.24% 60.50%, 8.38% 60.29%, 11.01% 62.16%, 15.35%
+             61.64%, 17.13% 62.37%, 19.02% 60.29%, 20.06% 61.23%, 20.67% 60.40%,
+             22.81% 61.12%, 35.05% 60.08%, 38.65% 61.02%, 40.61% 59.67%, 38.96%
+             58.21%, 34.19% 56.86%, 32.48% 54.26%, 30.52% 54.78%, 28.93% 52.18%,
+             26.61% 50.52%, 23.73% 51.14%, 21.22% 48.54%, 18.96% 48.44%, 17.80%
+             47.19%, 17.19% 47.82%, 11.13% 46.88%, 8.44% 45.32%, 6.36% 46.15%, 5.87%
+             47.92%)}
+/* 물웅덩이 */
+.h-puddle{clip-path:polygon(22.75% 82.12%, 23.36% 83.16%, 24.22% 82.74%, 25.32% 83.99%, 28.75% 84.51%, 30.89%
+             85.55%, 38.84% 85.65%, 39.20% 85.03%, 38.90% 84.30%, 36.94% 84.51%,
+             35.72% 84.10%, 34.98% 83.16%, 35.05% 82.22%, 36.27% 80.87%, 39.39%
+             80.25%, 40.55% 80.56%, 40.73% 79.94%, 40.12% 78.17%, 39.27% 77.34%,
+             35.41% 77.13%, 35.23% 78.07%, 34.74% 78.38%, 34.43% 77.23%, 33.21%
+             76.51%, 32.11% 77.03%, 30.52% 76.82%, 27.58% 77.44%, 27.22% 76.40%,
+             26.30% 76.30%, 23.79% 77.34%, 23.18% 79.00%, 23.98% 80.35%)}
+/* 포리의 집 — 돔 */
+.h-house {clip-path:polygon(88.50% 54.68%, 85.14% 43.14%, 77.74% 33.78%, 77.55% 32.02%, 75.29% 30.77%, 74.37%
+             32.95%, 71.56% 32.22%, 68.32% 33.68%, 67.83% 32.22%, 66.54% 33.06%,
+             65.87% 32.22%, 65.57% 35.14%, 63.18% 37.01%, 62.26% 36.07%, 63.00%
+             38.05%, 59.69% 41.48%, 56.57% 49.90%, 56.39% 51.87%, 59.20% 56.13%,
+             55.96% 55.20%, 55.23% 56.03%, 55.72% 59.15%, 55.17% 65.07%, 58.17%
+             64.76%, 55.72% 69.33%, 57.37% 71.73%, 58.59% 70.27%, 59.08% 67.46%,
+             61.04% 66.74%, 62.51% 68.30%, 65.93% 68.81%, 67.22% 70.79%, 77.19%
+             71.10%, 79.51% 67.36%, 80.80% 66.84%, 81.96% 69.44%, 84.65% 66.94%,
+             86.24% 70.37%, 87.46% 70.37%, 87.58% 68.50%, 88.62% 67.15%)}
+/* 문 */
+.h-door  {clip-path:polygon(77.98% 54.47%, 74.07% 49.79%, 72.78% 48.86%, 70.58% 49.79%, 67.46% 52.49%, 67.46%
+             53.64%, 68.26% 55.41%, 67.71% 56.76%, 67.89% 57.59%, 67.40% 60.71%,
+             67.40% 70.58%, 76.57% 71.10%, 77.37% 70.37%, 77.43% 59.98%, 76.64%
+             56.86%, 77.25% 55.72%, 77.98% 55.09%)}
+/* 포리 — 꼬리와 펼쳐 든 도면까지 */
+.h-pori  {clip-path:polygon(55.54% 51.46%, 53.39% 51.66%, 53.09% 52.60%, 53.27% 54.16%, 51.80% 54.89%, 51.87%
+             56.13%, 50.76% 58.21%, 50.40% 62.58%, 47.89% 62.99%, 47.16% 63.93%,
+             48.13% 67.26%, 48.01% 70.06%, 48.87% 70.89%, 48.93% 73.28%, 51.25%
+             74.84%, 51.62% 77.03%, 51.07% 77.96%, 51.38% 78.79%, 54.01% 78.69%,
+             54.62% 76.30%, 55.35% 77.75%, 55.11% 79.11%, 56.82% 79.11%, 57.06%
+             78.17%, 58.10% 77.23%, 58.41% 75.16%, 60.98% 73.60%, 62.32% 70.58%,
+             62.39% 64.66%, 61.28% 64.66%, 59.33% 58.00%, 59.39% 56.76%, 58.84%
+             55.09%, 57.43% 52.91%)}
+
+/* 이름표 — 각 모양의 위쪽 가운데 */
+.t-login {left:86%;   top:9%}     .t-signup{left:94%;   top:9%}
+.t-copy  {left:31.5%; top:14.5%}
+.t-dam   {left:9%;    top:41.5%}
+.t-puddle{left:31.7%; top:71.1%}
+.t-house {left:71.9%; top:25.6%}
+.t-door  {left:72.7%; top:43.7%}
+.t-pori  {left:54.8%; top:46.3%}
+
+/* ───────────────────────── 문 ─────────────────────────
+   호버하면 밝아지는 대신 '실제로 열린다'.
+   문짝을 그림에서 오려내(door.png) 왼쪽 경첩을 축으로 안쪽으로 돌린다.
+   그 뒤에 어두운 실내를 깔아 두어, 문이 열린 만큼 안이 보인다. */
+.doorfx{position:absolute;inset:0;pointer-events:none;z-index:11}
+.doorfx .dark,
+.doorfx .leaf{
+  position:absolute;left:67.52%;top:49.17%;width:10.28%;height:21.62%;display:block
+}
+/* 실내는 다각형이 아니라 이미지다 — 다각형으로 깎으면 아치가 각진다 */
+.doorfx .leaf{
+  transform-origin:0% 50%;                       /* 경첩은 왼쪽 — 손잡이 고리가 오른쪽에 있다 */
+  transform:perspective(900px) rotateY(0deg);
+  transition:transform .55s cubic-bezier(.2,.85,.3,1), filter .55s ease;
+  will-change:transform;backface-visibility:hidden
+}
+.h-door:hover ~ .doorfx .leaf,
+.h-door:focus-visible ~ .doorfx .leaf{
+  transform:perspective(900px) rotateY(-34deg);   /* 음수 = 안쪽으로 열린다 */
+  filter:brightness(.84)
+}
+/* 문만은 밝아지지 않는다 — 밝아진 '닫힌 문'이 위에 덮여 열리는 게 안 보인다 */
+.h-door:hover,.h-door:focus-visible{opacity:0;filter:none}
+
+/* ───────────────────── 로그인 상태 덮개 ─────────────────────
+   그림에 '로그인 / 회원가입'이 그려져 있다. 로그인한 사람에게는
+   그 자리를 덮어 이름과 로그아웃을 보여준다. */
+.me{
+  position:absolute;z-index:24;left:78%;top:1.4%;width:20.5%;height:7.6%;
+  display:none;align-items:center;justify-content:flex-end;gap:7px
+}
+body[data-auth="in"] .me{display:flex}
+body[data-auth="in"] .h-login,
+body[data-auth="in"] .h-signup,
+body[data-auth="in"] .t-login,
+body[data-auth="in"] .t-signup{display:none}
+.me .nm{
+  background:rgba(255,255,255,.94);color:var(--ink);border-radius:999px;
+  padding:7px 13px;font-size:12.5px;font-weight:800;white-space:nowrap;
+  box-shadow:0 8px 22px rgba(0,0,0,.18)
+}
+.me button{
+  background:rgba(20,35,18,.84);color:#fff;border:0;border-radius:999px;
+  padding:7px 13px;font-size:12.5px;font-weight:700;cursor:pointer;
+  backdrop-filter:blur(8px);box-shadow:0 8px 22px rgba(0,0,0,.18)
+}
+.me button:hover{background:rgba(20,35,18,.96)}
+
+/* ───────────────────────── 도구 · 안내 ───────────────────────── */
+.tools{position:absolute;left:20px;top:20px;z-index:30;display:flex;gap:9px}
+.tool-btn{
+  border:0;border-radius:999px;padding:10px 15px;background:rgba(20,35,18,.72);
+  color:#fff;font-size:13.5px;font-weight:700;cursor:pointer;
+  backdrop-filter:blur(8px);box-shadow:0 10px 26px rgba(0,0,0,.18);transition:.16s
+}
+.tool-btn:hover{transform:translateY(-1px);background:rgba(20,35,18,.92)}
+
+.hint{
+  position:absolute;left:20px;bottom:20px;z-index:25;max-width:min(340px,44vw);
+  padding:11px 14px;border-radius:16px;background:rgba(255,255,255,.88);
+  color:var(--ink);font-size:11.5px;line-height:1.6;
+  box-shadow:0 16px 40px rgba(0,0,0,.18);backdrop-filter:blur(10px)
+}
+.hint strong{display:block;margin-bottom:4px;font-size:13.5px}
+.hint .dim{color:var(--muted)}
+
+.toast{
+  position:absolute;left:50%;bottom:22px;transform:translate(-50%,16px);z-index:60;
+  padding:12px 18px;border-radius:999px;background:rgba(17,29,15,.93);color:#fff;
+  font-size:14px;font-weight:700;opacity:0;pointer-events:none;transition:.2s ease;
+  backdrop-filter:blur(10px);max-width:86vw;text-align:center
+}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+
+/* ───────────────────────── 목표 입력 ─────────────────────────
+   그림에는 입력란이 없다. 포리를 누르면 열린다. */
+.dlg{position:fixed;inset:0;z-index:90;background:rgba(10,20,10,.55);
+  display:grid;place-items:center;padding:20px;overflow:auto;backdrop-filter:blur(3px)}
+.dlg[hidden]{display:none}
+.dlg-box{
+  background:#fff;border-radius:26px;padding:26px 24px 22px;width:100%;max-width:560px;
+  box-shadow:0 30px 90px rgba(0,0,0,.32);position:relative;color:var(--ink)
+}
+.dlg-x{
+  position:absolute;right:14px;top:14px;width:34px;height:34px;border:0;border-radius:50%;
+  background:#eef2ea;cursor:pointer;font-weight:800;font-size:16px;color:var(--ink)
+}
+.dlg-say{font-size:24px;font-weight:800;letter-spacing:-.035em}
+.dlg-sub{margin:8px 0 18px;color:var(--muted);font-size:13.5px;line-height:1.65}
+.ask{display:flex;gap:9px;align-items:center;border:2px solid #dfe5da;border-radius:16px;
+  padding:6px 6px 6px 16px;transition:.14s}
+.ask:focus-within{border-color:#182a16;box-shadow:0 0 0 4px rgba(24,42,22,.1)}
+.ask input{flex:1;border:0;outline:none;background:none;font-size:15.5px;font-weight:600;
+  color:var(--ink);padding:12px 0;min-width:0}
+.ask input::placeholder{color:#9aa694;font-weight:500}
+.ask .go{flex:0 0 auto;width:44px;height:44px;border:0;border-radius:50%;background:#182a16;
+  color:#fff;font-size:18px;cursor:pointer;transition:.14s}
+.ask .go:hover{transform:scale(1.07)}
+.egs{display:flex;gap:7px;flex-wrap:wrap;margin-top:12px}
+.egs button{background:#f2f5ef;border:0;border-radius:999px;padding:7px 13px;
+  font-size:12.5px;font-weight:700;color:var(--ink);cursor:pointer;transition:.14s}
+.egs button:hover{background:#e4ebe0}
+.demo{margin-top:16px;padding-top:14px;border-top:1px solid #eef2ea;
+  font-size:11.5px;line-height:1.7;color:var(--muted)}
+.demo b{color:var(--ink);font-weight:800}
+
+#replaceNotice:not(:empty){
+  position:absolute;left:50%;top:16px;translate:-50% 0;z-index:40;width:min(560px,90vw)
+}
+
+/* ───────────────────────── 좁은 화면 ─────────────────────────
+   390px 에 숲을 통째로 넣으면 그림도 핫스팟도 못 쓴다.
+   그림은 가로로 넘겨 보게 하고, 같은 목적지를 목록으로도 준다. */
+@media (max-width:860px){
+  body.world-body{overflow:auto}
+  .hero{height:auto;min-height:100vh;display:block;padding-bottom:20px}
+  .scroller{overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch}
+  /* 좁은 화면에서는 가로 스크롤 안에 흐름대로 놓는다 */
+  .stage{position:static;transform:none;width:calc(56vh * 1635 / 962);min-width:780px}
+  .tools{position:static;margin:12px 12px 0}
+  .hint{position:static;margin:14px 12px 0;max-width:none}
+  /* 좁은 화면에서는 안내 배너가 도구 버튼을 덮는다 — 흐름 안에 둔다 */
+  #replaceNotice:not(:empty){position:static;translate:none;width:auto;margin:12px}
+  .toast{position:fixed;bottom:16px}
+
+  .menu{display:grid;gap:9px;padding:14px 12px 4px}
+  .menu a,.menu button{
+    display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;
+    background:rgba(255,255,255,.94);border:0;border-radius:16px;padding:15px 17px;
+    font-size:15px;font-weight:700;color:var(--ink);text-decoration:none;text-align:left;
+    box-shadow:0 10px 26px rgba(0,0,0,.14);cursor:pointer;font-family:inherit
+  }
+  .menu a span,.menu button span{color:var(--muted);font-size:12.5px;font-weight:600}
+}
+@media (min-width:861px){ .menu{display:none} .scroller{overflow:visible} }
+
+@media (prefers-reduced-motion:reduce){
+  *,*:before,*:after{transition-duration:.001ms!important;animation-duration:.001ms!important}
+}

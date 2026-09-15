@@ -2,79 +2,134 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>청사진 · 청년 정책금융 AI PB</title>
+<link rel="preload" as="image" href="./img/forest.webp" type="image/webp">
 <link rel="stylesheet" href="./css/app.css">
-<style>
-  .hero{min-height:calc(100vh - 64px);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px 20px 80px;text-align:center}
-  .pill{background:var(--sky);color:var(--blue);padding:7px 15px;border-radius:20px;font-size:13px;font-weight:700;margin-bottom:20px}
-  .hero h1{font-size:38px;font-weight:800;color:var(--navy-deep);letter-spacing:-.6px;margin-bottom:12px}
-  .hero .sub{color:var(--muted);font-size:15px;margin-bottom:30px;line-height:1.6}
-  .search{
-    width:100%;max-width:660px;background:#fff;border:2px solid #e5e7eb;border-radius:16px;
-    padding:8px 10px 8px 20px;display:flex;align-items:center;gap:10px;box-shadow:var(--sh-lg);transition:.2s
-  }
-  .search:focus-within{border-color:var(--blue);box-shadow:0 10px 25px rgba(37,99,235,.14)}
-  .search input{flex:1;border:none;outline:none;font-size:16px;background:none;padding:12px 0}
-  .search input::placeholder{color:#9ca3af}
-  .tags{margin-top:18px;display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
-  .tags button{background:#fff;border:1px solid #e5e7eb;color:var(--muted);padding:7px 13px;border-radius:8px;font-size:13px}
-  .tags button:hover{border-color:var(--blue2);color:var(--blue)}
-  .demo{margin-top:38px;font-size:12px;color:var(--muted2);line-height:1.9}
-  .demo b{color:var(--muted);font-weight:700}
-  .parsed{max-width:660px;width:100%;margin-top:18px;text-align:left}
-  .parsed .grid4{gap:10px}
-</style>
+<link rel="stylesheet" href="./css/scene.css">
 </head>
-<body>
-
-<header class="top">
-  <a class="logo" href="./index.html"><i>청</i><span>청사진</span></a>
-  <div class="top-right" id="topRight"></div>
-</header>
-
+<body class="world-body">
 <main class="hero">
-  <div class="pill">청년 정책금융 AI PB</div>
-  <h1>꿈을 말하면, 길을 잇습니다</h1>
-  <p class="sub">
-    이루고 싶은 목표를 그냥 말해보세요.<br>
-    내가 가진 돈에 <b>활용할 수 있는 정책</b>까지 더해서 실제로 가능한지 계산해 드립니다.
-  </p>
+
+  <div class="tools">
+    <button class="tool-btn" id="toggleMap">클릭할 수 있는 곳 보기</button>
+  </div>
 
   <div id="replaceNotice"></div>
 
-  <div class="search">
-    <input id="q" placeholder="예: 2년 뒤 마포구에 1억 전세로 독립하고 싶어. 지금 600만 원 있어." autocomplete="off">
-    <button class="btn" id="go">제출하기</button>
+  <div class="scroller">
+    <div class="stage">
+      <picture>
+        <source srcset="./img/forest.webp" type="image/webp">
+        <img class="scene" src="./img/forest.jpg" alt="포리의 숲 — 댐, 포리의 집, 물웅덩이가 있는 장면"
+             width="1635" height="962" fetchpriority="high">
+      </picture>
+
+      <!-- ── 계정 ─────────────────────────────────────────── -->
+      <button class="hotspot h-login"  data-key="login"  aria-label="로그인"></button>
+      <div class="label t-login">로그인</div>
+
+      <button class="hotspot h-signup" data-key="signup" aria-label="회원가입"></button>
+      <div class="label t-signup">회원가입</div>
+
+      <!-- 로그인한 사람에게는 그림 속 버튼 자리를 덮는다 -->
+      <div class="me" id="topRight"></div>
+
+      <!-- ── 메인 카피 → 목표 입력 ─────────────────────────── -->
+      <button class="hotspot h-copy" data-key="copy" aria-label="목표 입력하기"></button>
+      <div class="label t-copy">목표 말하기</div>
+
+      <!-- ── 댐 → STEP 5 실행 로드맵 ───────────────────────── -->
+      <button class="hotspot h-dam" data-key="dam" aria-label="실행 로드맵으로 이동"></button>
+      <div class="label t-dam">실행 로드맵 · STEP 5</div>
+
+
+      <!-- ── 물웅덩이 → 기능 설명 ──────────────────────────── -->
+      <button class="hotspot h-puddle" data-key="puddle" aria-label="기능 설명 보기"></button>
+      <div class="label t-puddle">기능 설명</div>
+
+      <!-- ── 포리의 집 → 마이페이지 ────────────────────────── -->
+      <button class="hotspot h-house" data-key="house" aria-label="마이페이지로 이동"></button>
+      <div class="label t-house">마이페이지</div>
+
+
+      <button class="hotspot h-door" data-key="door" aria-label="집 문 열기"></button>
+      <div class="label t-door">문 열기</div>
+
+      <!-- 문짝. 그림에서 떼어낸 조각이라 경첩(왼쪽)을 축으로 실제로 돌아간다.
+           .h-door 뒤에 있어야 형제 선택자(~)로 호버를 받는다. -->
+      <div class="doorfx" aria-hidden="true">
+        <img class="dark" src="./img/door_inner.png" alt="">
+        <img class="leaf" src="./img/door.png" alt="">
+      </div>
+
+
+      <!-- ── 포리 → 내 목표 ───────────────────────────────── -->
+      <button class="hotspot h-pori" data-key="pori" aria-label="포리 — 내 목표"></button>
+      <div class="label t-pori">포리 · 내 목표</div>
+
+    </div>
   </div>
 
-  <div class="tags">
-    <button data-t="2년 뒤 마포구에 1억 전세로 독립하고 싶어. 지금 600만 원 있어.">전세 독립</button>
-    <button data-t="1년 뒤에 경기권 6억 아파트를 사고 싶어요. 금융자산은 2억 정도 됩니다.">내집 마련</button>
-    <button data-t="3년 안에 결혼자금 5천만 원을 모으고 싶어요. 지금 800만 원 있어요.">결혼 자금</button>
-    <button data-t="2년 동안 목돈 3천만 원 만들고 싶어. 현재 500만 원 있어.">목돈 만들기</button>
+  <!-- ── 좁은 화면용 목록. 핫스팟과 같은 길(go)을 쓴다 ────────── -->
+  <nav class="menu">
+    <button data-spot="pori">포리에게 목표 말하기 <span>내 목표</span></button>
+    <button data-spot="dam">실행 로드맵 <span>STEP 5</span></button>
+    <button data-spot="house">포리의 집 <span>마이페이지</span></button>
+    <button data-spot="puddle">기능 설명 <span>처음이라면</span></button>
+    <button data-spot="login">로그인 · 회원가입 <span>계정</span></button>
+  </nav>
+
+  <div class="hint">
+    <strong>포리를 누르면 목표를 말할 수 있어요</strong>
+    댐 · 집 · 물웅덩이도 눌러보세요.
+    어디를 누를 수 있는지 모르겠다면 왼쪽 위 버튼을 켜보세요.
+    <span class="dim" id="demoBox"><br>심사용 데모 — demo1@cheongsajin.kr ·
+    demo2@cheongsajin.kr · 비밀번호 demo1234</span>
   </div>
 
-  <div class="parsed hide" id="parsed">
-    <div class="card">
+  <div class="toast" id="toast"></div>
+</main>
+
+<!-- ═══════════════════ 목표 입력 ═══════════════════ -->
+<div class="dlg" id="goalDlg" hidden>
+  <div class="dlg-box">
+    <button class="dlg-x" id="goalClose" aria-label="닫기">×</button>
+    <div class="dlg-say">어디로 가고 싶어요?</div>
+    <p class="dlg-sub">
+      이루고 싶은 목표를 그냥 적어보세요. 내가 가진 돈에 받을 수 있는 정책까지 더해서
+      실제로 가능한지 계산해 드립니다.
+    </p>
+
+    <div class="ask">
+      <input id="q" autocomplete="off"
+             placeholder="예: 2년 뒤 마포구에 1억 전세로 독립하고 싶어. 지금 600만 원 있어.">
+      <button class="go" id="go" aria-label="분석 시작">→</button>
+    </div>
+
+    <div class="egs">
+      <button data-t="2년 뒤 마포구에 1억 전세로 독립하고 싶어. 지금 600만 원 있어.">전세 독립</button>
+      <button data-t="1년 뒤에 경기권 6억 아파트를 사고 싶어요. 금융자산은 2억 정도 됩니다.">내집 마련</button>
+      <button data-t="3년 안에 결혼자금 5천만 원을 모으고 싶어요. 지금 800만 원 있어요.">결혼 자금</button>
+      <button data-t="2년 동안 목돈 3천만 원 만들고 싶어. 현재 500만 원 있어.">목돈 만들기</button>
+    </div>
+
+    <!-- 파싱 결과 — 잘못 읽은 값을 사용자가 잡아낼 수 있는 유일한 지점이다 -->
+    <div id="parsed" class="hide" style="margin-top:18px">
       <div class="trust"><span class="t-fact">FACT</span><span class="t-calc">CALCULATION</span></div>
-      <div class="card-t" style="font-size:16px;margin-bottom:12px">이렇게 이해했습니다</div>
-      <div class="grid4" id="chips"></div>
-      <div id="askMore" style="margin-top:14px"></div>
+      <div class="card-t" style="font-size:17px;margin-bottom:4px">이렇게 이해했습니다</div>
+      <p class="card-sub" style="margin-bottom:12px">잘못 읽은 값이 있으면 다시 입력해 주세요.</p>
+      <div class="grid4" id="chips" style="grid-template-columns:1fr 1fr"></div>
+      <div id="askMore" style="margin-top:12px"></div>
       <div style="display:flex;gap:10px;margin-top:16px">
         <button class="btn ghost sm" id="redo">다시 입력</button>
         <button class="btn sm" id="confirm" style="flex:1">이 목표로 분석 시작</button>
       </div>
     </div>
   </div>
+</div>
 
-  <div class="demo" id="demoBox">
-    <b>심사용 데모 계정</b><br>
-    demo1@cheongsajin.kr / demo1234 — 김민재 (26세 · 2년 뒤 1억 전세 독립)<br>
-    demo2@cheongsajin.kr / demo1234 — 이지은 (33세 · 1년 뒤 6억 아파트)
-  </div>
-</main>
-
+<script type="module" src="./js/scene.js"></script>
 <script type="module">
 import { initStore, currentUser, getActiveGoal, getProfile, createGoal, signOut, aiEnabled, saveProfile } from './js/store.js';
 import { parseGoal, enhanceWithAI, GOAL_LABEL } from './js/goalparse.js';
@@ -85,6 +140,8 @@ let parsedGoal = null;
 
 const { mode } = await initStore();
 const user = await currentUser();
+/* 장면(scene.js)이 잠긴 물건을 판단할 때 읽는다 */
+document.body.dataset.auth = user ? 'in' : 'out';
 
 /* 재접속 라우팅: 목표가 있으면 곧바로 목표 대시보드로.
    단 '목표 바꾸기'(?new=1)로 일부러 들어온 경우는 되돌려보내지 않는다.
@@ -95,6 +152,8 @@ if (user) {
   currentGoal = await getActiveGoal();
   if (currentGoal && !wantsNew) location.replace('./app.html#dashboard');
 }
+document.body.dataset.goal = currentGoal ? 'y' : 'n';
+if (wantsNew) { const d = document.getElementById('goalDlg'); if (d) d.hidden = false; }
 
 /* 목표를 바꾸러 들어온 경우, 기존 목표가 어떻게 되는지 미리 알려준다.
    createGoal() 은 새 목표를 만들면서 기존 목표를 archived 로 돌린다.
@@ -111,15 +170,16 @@ if (currentGoal && wantsNew) {
 }
 
 const prof = user ? await getProfile() : null;
+/* 로그아웃 상태에서는 그림에 그려진 '로그인 / 회원가입' 버튼을 그대로 쓴다.
+   로그인했을 때만 그 자리를 덮는다. */
 $('#topRight').innerHTML = user
-  ? `<span>${prof ? prof.nickname : ''}님</span>
-     <button class="btn ghost sm" id="out">로그아웃</button>`
-  : `<a class="btn ghost sm" href="./auth.html?mode=login">로그인</a>
-     <a class="btn sm" href="./auth.html?mode=signup">회원가입</a>`;
+  ? `<span class="nm">${prof ? prof.nickname : ''}님</span>
+     <button id="out">로그아웃</button>`
+  : '';
 $('#out')?.addEventListener('click', async () => { await signOut(); location.reload(); });
 if (user) $('#demoBox').classList.add('hide');
 
-document.querySelectorAll('.tags button').forEach((b) =>
+document.querySelectorAll('.egs button').forEach((b) =>
   b.addEventListener('click', () => { $('#q').value = b.dataset.t; analyze(); }));
 $('#go').addEventListener('click', analyze);
 $('#q').addEventListener('keydown', (e) => { if (e.key === 'Enter') analyze(); });
@@ -162,9 +222,10 @@ function render() {
   if (!g.target_amount) missing.push('목표 금액');
   if (!g.target_months) missing.push('목표 기간');
   const rateUnknown = (g.debts || []).filter((d) => d.needsRate);
+  /* 출처 표기는 사용자의 말로 적는다. '규칙 파서'·'AI 미연결'은 우리 쪽 사정이다. */
   const src = g.ai_used
-    ? '<span class="chip" style="background:#ffedd5;color:#c2410c">AI 보정 적용</span>'
-    : `<span class="chip">${aiEnabled() ? '규칙 파서로 충분' : '규칙 파서 · AI 미연결'}</span>`;
+    ? '<span class="chip">AI가 문장을 한 번 더 확인했습니다</span>'
+    : '<span class="chip">문장에서 바로 읽어냈습니다</span>';
   $('#askMore').innerHTML = (missing.length
     ? `<div class="warn">${missing.join('과 ')}을(를) 알 수 없었습니다. 다음 화면에서 직접 입력해 주세요.</div>`
     : `<div class="note">💡 정확한 정책 판정을 위해 나이·소득·거주지 정보가 필요합니다. ${user ? '가입 시 입력한 정보를 사용합니다.' : '회원가입에서 한 번만 입력하면 됩니다.'}</div>`)

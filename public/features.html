@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>청사진 · 무엇을 하는 서비스인가요</title>
+<link rel="stylesheet" href="./css/app.css">
+<link rel="stylesheet" href="./css/scene.css">
+<style>
+  /* ==========================================================================
+   * 기능 설명 — 토스식 진행
+   *   한 화면에 한 문장. sticky 로 붙잡고, 스크롤에 따라 글자가 채워진다.
+   *   라이브러리 없이 IntersectionObserver + rAF 로만 만든다.
+   * ======================================================================== */
+  body{background:#fff}
+
+  .fx-top{
+    position:fixed;top:0;left:0;right:0;z-index:60;height:60px;
+    display:flex;align-items:center;justify-content:space-between;padding:0 22px;
+    background:rgba(255,255,255,.86);backdrop-filter:saturate(1.6) blur(8px);
+    border-bottom:1px solid var(--bd)
+  }
+
+  /* 왼쪽 진행 눈금 */
+  .rail{position:fixed;left:26px;top:50%;translate:0 -50%;z-index:50;display:flex;
+        flex-direction:column;gap:9px}
+  .rail i{display:block;width:18px;height:2px;background:#D5DAE1;transition:.3s}
+  .rail i.on{width:30px;background:var(--ink)}
+
+  /* 한 장(章) = 한 화면. 안쪽을 sticky 로 붙잡는다. */
+  .ch{min-height:200vh;position:relative}
+  .ch .pin{position:sticky;top:0;height:100vh;display:grid;place-items:center;padding:0 24px}
+  .ch .in{max-width:860px;width:100%;text-align:center}
+
+  .big{font-size:clamp(30px,5.2vw,62px);font-weight:800;letter-spacing:-.04em;line-height:1.28;color:var(--ink)}
+  /* 글자가 스크롤에 따라 채워진다 */
+  .big .w{color:#D5DAE1;transition:color .28s ease}
+  .big .w.on{color:var(--ink)}
+  .lead{font-size:clamp(14.5px,1.6vw,18px);color:var(--muted);line-height:1.8;margin-top:20px}
+
+  /* 목록이 한 줄씩 켜진다 */
+  .rows{max-width:560px;margin:34px auto 0;text-align:left}
+  .row{
+    border-top:1px solid var(--bd);padding:20px 4px;display:flex;gap:16px;align-items:flex-start;
+    opacity:.34;transition:opacity .35s ease,transform .35s ease;transform:translateY(8px)
+  }
+  .row.on{opacity:1;transform:none}
+  .row .n{font-size:13px;font-weight:800;color:var(--brand);flex:0 0 26px;padding-top:3px}
+  .row h3{font-size:17px;font-weight:700;margin-bottom:5px}
+  .row p{font-size:14px;color:var(--muted);line-height:1.7}
+
+  /* 숫자 카운트업 */
+  .nums{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;max-width:660px;margin:38px auto 0}
+  .nums .c{border:1px solid var(--bd);border-radius:16px;padding:22px 14px}
+  .nums .v{font-size:36px;font-weight:800;letter-spacing:-.04em;font-variant-numeric:tabular-nums}
+  .nums .l{font-size:12.5px;color:var(--muted);margin-top:6px;font-weight:500}
+
+  .fx-end{padding:100px 24px 120px;text-align:center;background:var(--bg)}
+  .fx-end .btn{margin-top:22px;padding:16px 30px;font-size:16px}
+
+  .fade{opacity:0;transform:translateY(18px);transition:opacity .6s ease,transform .6s ease}
+  .fade.on{opacity:1;transform:none}
+
+  @media (max-width:720px){
+    .rail{display:none}
+    .ch{min-height:170vh}
+    .nums{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+
+<header class="fx-top">
+  <a class="logo" href="./index.html" style="display:flex;align-items:center;gap:9px;font-weight:800;font-size:17px">
+    <i style="width:26px;height:26px;border-radius:8px;background:var(--ink);color:#fff;display:grid;place-items:center;font-style:normal;font-size:13px">청</i>
+    <span>청사진</span>
+  </a>
+  <a class="wbtn" href="./index.html">숲으로 돌아가기</a>
+</header>
+
+<div class="rail" id="rail" aria-hidden="true"></div>
+
+<!-- ─────────────── 1 ─────────────── -->
+<section class="ch" data-ch>
+  <div class="pin"><div class="in">
+    <h2 class="big" data-fill>꿈을 말하면 길을 잇습니다</h2>
+    <p class="lead fade" data-fade>
+      “2년 뒤 마포구에 1억 전세로 독립하고 싶어.”<br>
+      이 한 문장이면 됩니다. 나머지는 청사진이 계산합니다.
+    </p>
+  </div></div>
+</section>
+
+<!-- ─────────────── 2 ─────────────── -->
+<section class="ch" data-ch>
+  <div class="pin"><div class="in">
+    <h2 class="big" data-fill>내 돈만으로 안 되면 정책을 얹습니다</h2>
+    <p class="lead fade" data-fade>
+      청년 정책금융 17종을 내 나이·소득·거주지·취업형태에 맞춰 판정합니다.<br>
+      받을 수 있는 것과 못 받는 것을, 이유까지 함께 보여줍니다.
+    </p>
+    <div class="rows">
+      <div class="row" data-row><div class="n">01</div><div>
+        <h3>신청 가능</h3><p>핵심 조건을 모두 충족했습니다. 바로 신청할 수 있습니다.</p></div></div>
+      <div class="row" data-row><div class="n">02</div><div>
+        <h3>조건부</h3><p>서류나 시점 확인이 남았습니다. 무엇을 확인해야 하는지 적어드립니다.</p></div></div>
+      <div class="row" data-row><div class="n">03</div><div>
+        <h3>대상 아님</h3><p>어떤 조건에서 걸렸는지 숫자로 알려드립니다. 추측하지 않습니다.</p></div></div>
+      <div class="row" data-row><div class="n">04</div><div>
+        <h3>종료</h3><p>이미 끝난 제도입니다. 목록에 남겨두되 계산에서는 뺍니다.</p></div></div>
+    </div>
+  </div></div>
+</section>
+
+<!-- ─────────────── 3 ─────────────── -->
+<section class="ch" data-ch>
+  <div class="pin"><div class="in">
+    <h2 class="big" data-fill>갚을지 끼고 갈지 같이 계산합니다</h2>
+    <p class="lead fade" data-fade>
+      대출을 먼저 갚는 게 이득인지, 그냥 두고 저축하는 게 이득인지는
+      <b>금리와 저축 수익률을 비교해야</b> 나옵니다.<br>
+      상환·저축·병행 세 가지를 같은 화면에서 숫자로 견줍니다.
+    </p>
+  </div></div>
+</section>
+
+<!-- ─────────────── 4 ─────────────── -->
+<section class="ch" data-ch>
+  <div class="pin"><div class="in">
+    <h2 class="big" data-fill>소비 습관은 심리가 아니라 행동으로 봅니다</h2>
+    <p class="lead fade" data-fade>
+      결제 문자를 붙여넣으면 야간 결제·연쇄 결제·평균 대비 편차를 셉니다.<br>
+      기분을 추측하지 않고, 그 소비가 <b>목표 도달 시점을 며칠 밀었는지</b>만 계산합니다.
+    </p>
+  </div></div>
+</section>
+
+<!-- ─────────────── 5 · 신뢰 ─────────────── -->
+<section class="ch" data-ch>
+  <div class="pin"><div class="in">
+    <h2 class="big" data-fill>화면의 숫자는 AI가 만들지 않습니다</h2>
+    <p class="lead fade" data-fade>
+      금액·기간·한도는 전부 계산식이 만듭니다.<br>
+      AI는 그 결과를 설명할 뿐입니다. 근거가 없는 숫자는 화면에 올리지 않습니다.
+    </p>
+    <div class="nums">
+      <div class="c"><div class="v" data-num="17">0</div><div class="l">판정하는 정책</div></div>
+      <div class="c"><div class="v" data-num="12">0</div><div class="l">원문 확인 완료</div></div>
+      <div class="c"><div class="v" data-num="0" data-suffix="개">0</div><div class="l">AI가 만든 숫자</div></div>
+    </div>
+  </div></div>
+</section>
+
+<section class="fx-end">
+  <h2 style="font-size:26px;font-weight:800;letter-spacing:-.03em">이제 목표를 말해주세요</h2>
+  <p style="color:var(--muted);margin-top:10px;font-size:14.5px">포리가 숲에서 기다리고 있습니다.</p>
+  <a class="btn" href="./index.html">숲으로 돌아가기</a>
+</section>
+
+<script type="module">
+/* 글자를 어절 단위로 쪼갠다. 채워지는 대상이 있어야 하기 때문. */
+document.querySelectorAll('[data-fill]').forEach((h) => {
+  h.innerHTML = h.textContent.trim().split(/\s+/)
+    .map((w) => `<span class="w">${w}</span>`).join(' ');
+});
+
+const chs = [...document.querySelectorAll('[data-ch]')];
+const rail = document.getElementById('rail');
+rail.innerHTML = chs.map(() => '<i></i>').join('');
+const ticks = [...rail.children];
+
+/* 스크롤 진행도에 따라 어절을 순서대로 켠다.
+   한 번에 다 켜지면 '읽는 리듬'이 생기지 않는다. */
+let raf = 0;
+function paint() {
+  raf = 0;
+  const vh = innerHeight;
+  chs.forEach((ch, ci) => {
+    const r = ch.getBoundingClientRect();
+    const total = r.height - vh;
+    const p = total > 0 ? Math.min(1, Math.max(0, -r.top / total)) : 0;
+    const active = r.top <= vh * 0.5 && r.bottom >= vh * 0.5;
+    ticks[ci].classList.toggle('on', active);
+
+    const ws = ch.querySelectorAll('.big .w');
+    const lit = Math.round(p * 2.1 * ws.length);
+    ws.forEach((w, i) => w.classList.toggle('on', i < lit));
+
+    ch.querySelectorAll('[data-fade]').forEach((f) => f.classList.toggle('on', p > 0.24));
+    ch.querySelectorAll('[data-row]').forEach((row, i) => {
+      row.classList.toggle('on', p > 0.3 + i * 0.1);
+    });
+  });
+}
+addEventListener('scroll', () => { if (!raf) raf = requestAnimationFrame(paint); }, { passive: true });
+addEventListener('resize', () => { if (!raf) raf = requestAnimationFrame(paint); });
+/* 숨겨진 탭에서는 rAF 가 멈춘다. 다시 보일 때 한 번 그려준다 —
+   안 그러면 스크롤 위치가 복원된 채로 글자가 꺼져 있다. */
+addEventListener('visibilitychange', () => { if (!document.hidden) { raf = 0; paint(); } });
+paint();
+
+
+</script>
+
+<script type="module">
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const io = new IntersectionObserver((es) => {
+  es.forEach((e) => {
+    if (!e.isIntersecting) return;
+    io.unobserve(e.target);
+    const el = e.target;
+    const to = Number(el.dataset.num);
+    const sfx = el.dataset.suffix || '';
+    if (reduced || to === 0) { el.textContent = to + sfx; return; }
+    const t0 = performance.now();
+    (function tick(now) {
+      const p = Math.min(1, (now - t0) / 900);
+      el.textContent = Math.round((1 - Math.pow(1 - p, 3)) * to) + sfx;
+      if (p < 1) requestAnimationFrame(tick);
+    })(t0);
+  });
+}, { threshold: 0.6 });
+document.querySelectorAll('[data-num]').forEach((n) => io.observe(n));
+</script>
+</body>
+</html>

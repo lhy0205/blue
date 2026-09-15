@@ -199,7 +199,13 @@ async function afterAuth() {
     location.href = './app.html#step1';
     return;
   }
+  /* 랜딩에서 잠긴 물건을 눌러 여기로 온 경우, 로그인 후 그 자리로 돌려보낸다.
+     원래 가려던 곳을 잊어버리면 사용자는 처음부터 다시 찾아가야 한다. */
+  let back = null;
+  try { back = sessionStorage.getItem('csj.afterAuth'); sessionStorage.removeItem('csj.afterAuth'); }
+  catch (e) { /* 사생활 모드 */ }
   const goal = await getActiveGoal();
+  if (back && goal) { location.href = back; return; }
   location.href = goal ? './app.html#dashboard' : './index.html';
 }
 
