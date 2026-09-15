@@ -248,6 +248,56 @@ body.show-map .label{opacity:1;transform:translateY(0)}
 }
 @keyframes lampGlow{0%,100%{opacity:.5;transform:scale(1)}50%{opacity:1;transform:scale(1.1)}}
 
+/* ── 바람 ────────────────────────────────────────────────────────
+   잎을 실제로 흔들려면 배경에서 지워야 하는데, 잎이 줄기·서로·뒤쪽 숲과
+   색이 겹쳐 통째로 떼어지지 않는다. 억지로 자르면 잎 파편이 떠다닌다.
+   그래서 모양이 아니라 '빛'을 움직인다 — 잎에 닿는 볕이 흐르고, 나무
+   그늘이 장면 위를 지나간다. 눈에는 바람으로 읽힌다. */
+.fauna .leafshine,
+.fauna .ripple,
+.fauna .dapple{position:absolute;inset:0;pointer-events:none}
+
+/* 잎에 드는 볕 — 잎이 있는 구역에만 번진다 */
+.fauna .leafshine{
+  -webkit-mask-image:url(../img/leafzone.png); mask-image:url(../img/leafzone.png);
+  -webkit-mask-size:100% 100%; mask-size:100% 100%;
+  -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat;
+  background:linear-gradient(104deg,
+    rgba(255,248,214,0) 34%, rgba(255,248,214,.30) 50%, rgba(255,248,214,0) 66%);
+  background-size:260% 100%;
+  mix-blend-mode:screen;
+  animation:drift 11s linear infinite
+}
+/* 수면 — 같은 방식이되 더 느리고 옅게 */
+.fauna .ripple{
+  -webkit-mask-image:url(../img/puddlemask.png); mask-image:url(../img/puddlemask.png);
+  -webkit-mask-size:100% 100%; mask-size:100% 100%;
+  -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat;
+  background:linear-gradient(97deg,
+    rgba(255,255,255,0) 36%, rgba(255,255,255,.22) 50%, rgba(255,255,255,0) 64%);
+  background-size:300% 100%;
+  mix-blend-mode:screen;
+  animation:drift 14s linear infinite -5s
+}
+@keyframes drift{0%{background-position:130% 0}100%{background-position:-70% 0}}
+
+/* 나뭇잎 사이로 새는 볕 — 장면 전체를 아주 느리게 지나간다.
+   이미지 없이 그라디언트 몇 개로 만든다. */
+.fauna .dapple{
+  background:
+    radial-gradient(22% 30% at 18% 22%, rgba(255,250,224,.16), transparent 70%),
+    radial-gradient(16% 24% at 41% 12%, rgba(255,250,224,.13), transparent 70%),
+    radial-gradient(26% 34% at 63% 30%, rgba(255,250,224,.10), transparent 70%),
+    radial-gradient(18% 26% at 84% 18%, rgba(255,250,224,.12), transparent 70%);
+  mix-blend-mode:soft-light;
+  animation:dapple 19s ease-in-out infinite
+}
+@keyframes dapple{
+  0%,100%{transform:translate3d(0,0,0) scale(1)}
+  33%    {transform:translate3d(1.4%,.8%,0) scale(1.03)}
+  66%    {transform:translate3d(-1.1%,-.5%,0) scale(1.015)}
+}
+
 /* 호버는 움직이는 레이어에 걸어야 한다 —
    댐 위의 비버, 포리 자신이 배경 그림이 아니라 이 레이어에 있기 때문이다. */
 .h-dam:hover ~ .fauna .f-bvr1,
