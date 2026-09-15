@@ -162,26 +162,103 @@ body.show-map .label{opacity:1;transform:translateY(0)}
 /* ───────────────────────── 문 ─────────────────────────
    호버하면 밝아지는 대신 '실제로 열린다'.
    문짝을 그림에서 오려내(door.png) 왼쪽 경첩을 축으로 안쪽으로 돌린다.
-   그 뒤에 어두운 실내를 깔아 두어, 문이 열린 만큼 안이 보인다. */
-.doorfx{position:absolute;inset:0;pointer-events:none;z-index:11}
-.doorfx .dark,
-.doorfx .leaf{
-  position:absolute;left:67.52%;top:49.17%;width:10.28%;height:21.62%;display:block
+   그 뒤에 어두운 문설주(door_inner.png)를 깔아, 열린 만큼 안이 보인다. */
+.doorfx{
+  position:absolute;inset:0;pointer-events:none;z-index:11;
+  /* 원근은 '문'이 아니라 '장면'에 건다.
+     .doorfx 가 무대 전체이므로 소실점(50%)이 곧 그림의 카메라 축이다.
+     문은 화면 오른쪽에 있으니 살짝 왼쪽에서 보게 되고, 안으로 열리면
+     오른쪽 문설주가 더 드러난다 — 실제로 그렇게 보인다.
+     기준 길이는 고정 px 로 둔다. vw 로 주면 뷰포트를 못 읽는 상황에서
+     0px 이 되어 3D 가 통째로 무너진다. 무대는 뷰포트보다 넓을 수도 있어
+     어차피 vw 가 올바른 기준도 아니다. */
+  perspective:1500px;
+  perspective-origin:50% 46%
 }
-/* 실내는 다각형이 아니라 이미지다 — 다각형으로 깎으면 아치가 각진다 */
-.doorfx .leaf{
-  transform-origin:0% 50%;                       /* 경첩은 왼쪽 — 손잡이 고리가 오른쪽에 있다 */
-  transform:perspective(900px) rotateY(0deg);
-  transition:transform .55s cubic-bezier(.2,.85,.3,1), filter .55s ease;
-  will-change:transform;backface-visibility:hidden
+.doorfx .jamb,
+.doorfx .leafwrap{
+  position:absolute;left:67.52%;top:49.17%;width:10.28%;height:21.62%
 }
-.h-door:hover ~ .doorfx .leaf,
-.h-door:focus-visible ~ .doorfx .leaf{
-  transform:perspective(900px) rotateY(-34deg);   /* 음수 = 안쪽으로 열린다 */
-  filter:brightness(.84)
+.doorfx .leafwrap{
+  transform-origin:0% 50%;                  /* 경첩은 왼쪽 — 손잡이 고리가 오른쪽에 있다 */
+  transform:rotateY(0deg);
+  transform-style:preserve-3d;
+  transition:transform .6s cubic-bezier(.22,.9,.28,1);
+  will-change:transform
 }
+.doorfx .leaf{width:100%;height:100%;display:block;backface-visibility:hidden}
+/* 열릴수록 안쪽(경첩 반대편)으로 그늘이 진다.
+   일률적인 brightness 로는 평평해 보인다 — 면이 돌아간 느낌은 이 기울기가 만든다.
+   door.png 의 알파를 마스크로 써서 문짝 밖으로 새지 않게 한다. */
+.doorfx .shade{
+  position:absolute;inset:0;opacity:0;
+  background:linear-gradient(100deg,
+    rgba(26,14,6,0) 12%, rgba(26,14,6,.28) 55%, rgba(26,14,6,.62) 100%);
+  -webkit-mask-image:url(../img/door.png); mask-image:url(../img/door.png);
+  -webkit-mask-size:100% 100%; mask-size:100% 100%;
+  -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat;
+  transition:opacity .6s ease
+}
+.h-door:hover ~ .doorfx .leafwrap,
+.h-door:focus-visible ~ .doorfx .leafwrap{transform:rotateY(-38deg)}
+.h-door:hover ~ .doorfx .shade,
+.h-door:focus-visible ~ .doorfx .shade{opacity:1}
 /* 문만은 밝아지지 않는다 — 밝아진 '닫힌 문'이 위에 덮여 열리는 게 안 보인다 */
 .h-door:hover,.h-door:focus-visible{opacity:0;filter:none}
+
+/* ───────────────────────── 살아 있는 것들 ─────────────────────────
+   숲이 정지 화면으로 보이지 않게 몇몇을 계속 움직인다.
+
+   두 가지 방식이 섞여 있다.
+   · 비버 셋 — 배경 그림에서 지워 두었다(주변 나뭇가지 질감을 떠와 메웠다).
+     원본이 없으니 기울이고 들썩여도 유령이 남지 않는다.
+   · 포리·강아지 — 배경에 그대로 두고 같은 자리에 겹쳤다. 그래서 '커지는'
+     움직임만 준다. 1.0 밑으로 내려가면 뒤의 원본이 삐져나온다.
+
+   핫스팟(z 10)보다 위에 있어야 한다. 아래에 두면 댐에 마우스를 올렸을 때
+   밝아진 댐 그림이 비버를 덮어 사라진다. */
+.fauna{position:absolute;inset:0;pointer-events:none;z-index:12}
+.fauna .f{position:absolute;display:block;transform-origin:50% 100%;will-change:transform}
+
+/* 비버 — 숨 + 몸 기울임 + 살짝 들썩임 */
+@keyframes bvrIdle{
+  0%,100%{transform:translateY(0) rotate(0deg) scaleY(1)}
+  28%     {transform:translateY(-2.2%) rotate(-1.4deg) scaleY(1.05)}
+  55%     {transform:translateY(.6%)  rotate(.9deg)  scaleY(.975)}
+  78%     {transform:translateY(-.8%) rotate(-.4deg) scaleY(1.02)}
+}
+/* 셋이 같은 박자로 움직이면 기계처럼 보인다 — 주기와 시작점을 어긋나게 둔다 */
+.fauna .f-bvr1{animation:bvrIdle 4.1s ease-in-out infinite}
+.fauna .f-bvr2{animation:bvrIdle 5.3s ease-in-out infinite -1.7s}
+.fauna .f-bvr3{animation:bvrIdle 4.7s ease-in-out infinite -3.1s}
+
+/* 포리·강아지 — 커지기만 한다 */
+@keyframes breathe{
+  0%,100%{transform:scale(1)}
+  50%     {transform:scale3d(1.006,1.024,1)}
+}
+.fauna .f-pori{animation:breathe 4.4s ease-in-out infinite}
+.fauna .f-dog {animation:breathe 3.2s ease-in-out infinite -1.1s}
+
+/* 랜턴 불빛 */
+.fauna .lampglow{
+  position:absolute;left:86.8%;top:51.2%;width:9.4%;height:13.6%;
+  background:radial-gradient(closest-side, rgba(255,216,138,.5), rgba(255,190,90,0) 72%);
+  mix-blend-mode:screen;animation:lampGlow 3.6s ease-in-out infinite
+}
+@keyframes lampGlow{0%,100%{opacity:.5;transform:scale(1)}50%{opacity:1;transform:scale(1.1)}}
+
+/* 호버는 움직이는 레이어에 걸어야 한다 —
+   댐 위의 비버, 포리 자신이 배경 그림이 아니라 이 레이어에 있기 때문이다. */
+.h-dam:hover ~ .fauna .f-bvr1,
+.h-dam:hover ~ .fauna .f-bvr2,
+.h-dam:hover ~ .fauna .f-bvr3{filter:brightness(1.18) saturate(1.14)}
+.h-pori:hover ~ .fauna .f-pori,
+.h-pori:focus-visible ~ .fauna .f-pori{
+  filter:brightness(1.18) saturate(1.14) drop-shadow(0 0 9px rgba(255,255,255,.9))
+}
+/* 포리는 밝아진 '정지한 포리'가 위에 덮이면 숨쉬기가 멈춘 것처럼 보인다 */
+.h-pori:hover,.h-pori:focus-visible{opacity:0;filter:none}
 
 /* ───────────────────── 로그인 상태 덮개 ─────────────────────
    그림에 '로그인 / 회원가입'이 그려져 있다. 로그인한 사람에게는
@@ -276,8 +353,11 @@ body[data-auth="in"] .t-signup{display:none}
   body.world-body{overflow:auto}
   .hero{height:auto;min-height:100vh;display:block;padding-bottom:20px}
   .scroller{overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch}
-  /* 좁은 화면에서는 가로 스크롤 안에 흐름대로 놓는다 */
-  .stage{position:static;transform:none;width:calc(56vh * 1635 / 962);min-width:780px}
+  /* 좁은 화면에서는 가로 스크롤 안에 흐름대로 놓는다.
+     static 이 아니라 relative 여야 한다 — 핫스팟과 문짝이 절대 위치라
+     무대가 기준이 되지 않으면 화면 밖으로 튀어나간다. */
+  .stage{position:relative;top:auto;transform:none;
+         width:calc(56vh * 1635 / 962);min-width:780px}
   .tools{position:static;margin:12px 12px 0}
   .hint{position:static;margin:14px 12px 0;max-width:none}
   /* 좁은 화면에서는 안내 배너가 도구 버튼을 덮는다 — 흐름 안에 둔다 */
@@ -296,5 +376,5 @@ body[data-auth="in"] .t-signup{display:none}
 @media (min-width:861px){ .menu{display:none} .scroller{overflow:visible} }
 
 @media (prefers-reduced-motion:reduce){
-  *,*:before,*:after{transition-duration:.001ms!important;animation-duration:.001ms!important}
+  *,*:before,*:after{transition-duration:.001ms!important;animation:none!important}
 }

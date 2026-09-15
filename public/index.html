@@ -59,14 +59,34 @@
       <!-- 문짝. 그림에서 떼어낸 조각이라 경첩(왼쪽)을 축으로 실제로 돌아간다.
            .h-door 뒤에 있어야 형제 선택자(~)로 호버를 받는다. -->
       <div class="doorfx" aria-hidden="true">
-        <img class="dark" src="./img/door_inner.png" alt="">
-        <img class="leaf" src="./img/door.png" alt="">
+        <img class="jamb" src="./img/door_inner.png" alt="">
+        <div class="leafwrap">
+          <img class="leaf" src="./img/door.png" alt="">
+          <span class="shade"></span>
+        </div>
       </div>
 
 
       <!-- ── 포리 → 내 목표 ───────────────────────────────── -->
       <button class="hotspot h-pori" data-key="pori" aria-label="포리 — 내 목표"></button>
       <div class="label t-pori">포리 · 내 목표</div>
+
+      <!-- 살아 있는 것들. 배경 위에 얹혀 각자 다른 박자로 숨쉰다.
+           비버 셋은 배경에서 지워져 있어 자유롭게 움직일 수 있고,
+           포리·강아지는 제자리에 겹쳐 두어 커지기만 한다(원본을 늘 덮는다). -->
+      <div class="fauna" aria-hidden="true">
+        <img class="f f-bvr1" src="./img/bvr1.png" alt=""
+             style="left:14.74%;top:42.00%;width:4.04%;height:6.76%">
+        <img class="f f-bvr2" src="./img/bvr2.png" alt=""
+             style="left:23.49%;top:45.43%;width:4.04%;height:6.03%">
+        <img class="f f-bvr3" src="./img/bvr3.png" alt=""
+             style="left:28.50%;top:54.26%;width:4.77%;height:6.55%">
+        <img class="f f-dog" src="./img/dog.png" alt=""
+             style="left:41.22%;top:68.09%;width:6.85%;height:11.95%">
+        <img class="f f-pori" src="./img/pori.png" alt=""
+             style="left:47.03%;top:51.14%;width:15.54%;height:28.27%">
+        <span class="lampglow"></span>
+      </div>
 
     </div>
   </div>
