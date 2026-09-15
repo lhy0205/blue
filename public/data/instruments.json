@@ -29,12 +29,15 @@
       "category_label": "대표 지수 ETF",
       "name": "iShares Core S&P 500 ETF",
       "ticker": "IVV",
+      "benchmark": "S&P 500",
+      "wrapper": "ETF",
       "currency": "USD",
       "hedged": false,
       "metrics": [
         { "type": "MODEL_RETURN", "label": "시뮬레이션 가정", "value": "연 6%" },
         { "type": "HISTORICAL_RETURN", "label": "과거 성과", "value": "별도 확인" },
-        { "type": "INDEX", "label": "추종 지수", "value": "S&P 500" }
+        { "type": "INDEX", "label": "추종 지수", "value": "S&P 500" },
+        { "type": "CURRENCY", "label": "기준 통화", "value": "USD" }
       ],
       "risk": "주식 가격·환율·하락폭 위험. 가정치는 상품 예측이 아님.",
       "assumption": "SYNTHETIC_V4 주식 가정 연 -25% / +6% / +15%",

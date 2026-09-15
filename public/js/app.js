@@ -11,6 +11,7 @@ import { buildBlueprint, feasibility, simulate, tradeoff, progress, money, month
 import { renderDebtEditor, collectDebts, validateDebts } from './debtform.js';
 import * as FT from './fintox.js';
 import * as CR from './credit.js';
+import * as AS from './as.js';
 import { GOAL_LABEL } from './goalparse.js';
 import { fetchYouthPolicies, regionQuery } from './ycapi.js';
 import { makeIcs, downloadIcs, buildScheduleEvents } from './ics.js';
@@ -54,7 +55,7 @@ async function boot() {
   const [db, mvno, instrumentDb] = await Promise.all([
     (await fetch('./data/policies.json')).json(),
     (await fetch('./data/mvno.json')).json(),
-    (await fetch('./data/instruments.json')).json(),
+    AS.loadInstruments(),
   ]);
   state.policies = db.policies;
   state.groups = db.exclusive_groups;
