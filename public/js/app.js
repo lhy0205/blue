@@ -6,7 +6,7 @@ import * as S from './store.js';
 import { judgeAll, resolveCombination, filterByGoal, VERDICT, CODE, koreanAge } from './rules.js';
 import { buildBlueprint, feasibility, simulate, tradeoff, progress, money, monthlyPayment, ddayFrom,
          debtSummary, applyRepayment, totalMonthlyDue, DEBT_LABEL,
-         allocationScenarios, lumpsumScenarios, repayAdvice } from './calc.js';
+         allocationScenarios, lumpsumScenarios, repayAdvice, SAVING_BENCHMARK_RATE } from './calc.js';
 import { renderDebtEditor, collectDebts, validateDebts } from './debtform.js';
 import * as FT from './fintox.js';
 import * as CR from './credit.js';
@@ -67,11 +67,13 @@ async function boot() {
   rejudge();
   $('#avatar').textContent = (state.profile.nickname || '?').slice(0, 1);
   $('#avatar').addEventListener('click', () => (location.hash = '#mypage'));
+  /* 헤더에는 기능 상태('AI 연결됨' 같은)를 적지 않는다.
+     사용자가 알고 싶은 것은 시스템 구성이 아니라 "이 숫자를 믿어도 되는가" 이다. */
   $('#dbInfo').innerHTML =
-    `${esc(state.profile.nickname)} · ${esc(GOAL_LABEL[state.goal.goal_type] || '목표')}` +
-    ` <span class="chip" style="margin-left:6px">${mode === 'supabase' ? '계정 연동' : '로컬 저장'}</span>` +
-    ` <span class="chip" style="${S.aiEnabled() ? 'background:#ffedd5;color:#c2410c' : ''}">${S.aiEnabled() ? 'AI 연결됨' : 'AI 미연결'}</span>` +
-    ` <span class="chip" style="${S.policyApiEnabled() ? 'background:#dcfce7;color:#15803d' : ''}">${S.policyApiEnabled() ? '정책 API 사용 가능' : `정책 DB ${state.policies.length}종`}</span>`;
+    `<span class="who">${esc(state.profile.nickname)} · ${esc(GOAL_LABEL[state.goal.goal_type] || '목표')}</span>` +
+    ` <span class="chip">정책 원문 확인 · ${esc(state.meta.based_on)}</span>` +
+    ` <button class="chip" id="basisBtn" type="button">계산 기준 보기</button>`;
+  $('#basisBtn').addEventListener('click', openBasis);
 
   window.addEventListener('hashchange', route);
   route();
@@ -97,6 +99,38 @@ const done = {
   get step2() { return state.selected.size > 0; },
   get step3() { return !!state.finalId; },
 };
+
+/* 계산 기준 — 화면의 숫자가 어디서 나왔는지 한 곳에서 밝힌다.
+   '신뢰 센터'의 축소판. 여기 적는 값은 전부 코드에서 직접 읽어온다. */
+function openBasis() {
+  const verified = state.policies.filter((p) => p.source && p.source.verified).length;
+  const box = el(`<div class="modal"><div class="box">
+    <div class="card-t" style="margin-bottom:6px">계산 기준</div>
+    <p class="card-sub">청사진이 보여주는 금액이 어떻게 나오는지 정리했습니다.</p>
+
+    <div class="note" style="margin-bottom:10px">
+      <b>화면의 모든 금액은 계산식으로 만듭니다.</b><br>
+      AI는 결과를 설명할 뿐, 금액·기간·한도를 직접 만들지 않습니다.
+    </div>
+
+    <table class="wf"><tbody>
+      <tr><td>정책 데이터</td><td class="amt">${state.policies.length}종</td></tr>
+      <tr><td>원문 확인 완료</td><td class="amt">${verified}종</td></tr>
+      <tr><td>정책 기준일</td><td class="amt">${esc(state.meta.based_on)}</td></tr>
+      <tr><td>저축 수익률 가정</td><td class="amt">연 ${(SAVING_BENCHMARK_RATE * 100).toFixed(0)}%</td></tr>
+      <tr><td>대출 상환 방식</td><td class="amt">원리금균등</td></tr>
+    </tbody></table>
+
+    <p class="src" style="margin-top:14px">
+      금리·한도는 수시로 바뀝니다. 신청 전에 각 정책의 원문 링크에서 최신 조건을 확인해 주세요.
+    </p>
+    <button class="btn full" style="margin-top:16px" data-close>닫기</button>
+  </div></div>`);
+  const close = () => box.remove();
+  box.querySelector('[data-close]').addEventListener('click', close);
+  box.addEventListener('click', (e) => { if (e.target === box) close(); });
+  document.body.appendChild(box);
+}
 
 function route() {
   const hash = (location.hash || '#dashboard').slice(1);
