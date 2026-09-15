@@ -66,7 +66,7 @@ function emptyData() {
 /* 심사위원이 회원가입 없이 바로 볼 수 있도록 데모 계정 2개를 심어둔다 */
 /* 데모 계정 시드 버전. 데모 데이터를 바꾸면 이 값을 올린다.
    그러면 사용자가 아무것도 하지 않아도 다음 접속에서 자동으로 갱신된다. */
-const SEED_VER = '4';   // 4: 프로필에 debts 추가 (학자금 400만 / 신용대출 2,500만)
+const SEED_VER = '6';   // 6: 실행 센터 행동 체크리스트 반영
 function seedDemoAccounts() {
   const users = readJSON(LS.users, {});
   if (localStorage.getItem('csj.seedver') === SEED_VER) return;
@@ -101,7 +101,10 @@ function seedDemoAccounts() {
   }, {
     raw_input: '2년 뒤 마포구에 1억 전세로 독립하고 싶어. 지금 600만 원 있어.',
     goal_type: 'jeonse', target_amount: 100000000, target_months: 24,
-    target_zip_cd: '11440', current_asset: 6000000, monthly_saving: 583000,
+    target_zip_cd: '11440', current_asset: 6000000, emergency_reserved: 2000000,
+    goal_cash: 4000000, costs: 3000000, monthly_saving: 750000, goal_contribution: 750000,
+    monthly_income: 2350000, essential_expense: 1300000, debt_payment: 100000,
+    flexible_budget: 200000, emergency_topup: 0,
   }, [
     { policy_id: 'youth_butimok', verdict: 'eligible', applied_amount: 80000000, is_final: true },
     { policy_id: 'youth_future_savings', verdict: 'conditional', applied_amount: 720000, is_final: false },
@@ -125,6 +128,11 @@ function seedDemoAccounts() {
 }
 
 export const DEFAULT_CHECKLIST = [
+  { item_key: 'cashflow_review', label: '목표·월 현금흐름 확인' },
+  { item_key: 'emergency_review', label: '비상금 분리 확인' },
+  { item_key: 'risk_review', label: '위험·가정 설명 확인' },
+  { item_key: 'credit_review', label: '학자금 상환일·신용정보 공식 경로 확인' },
+  { item_key: 'cashout_review', label: '현금화·납입 일정 저장' },
   { item_key: 'goal_set', label: '목표 설정 완료' },
   { item_key: 'finance_input', label: '금융현황 입력' },
   { item_key: 'eligibility', label: '정책 자격 재확인' },
@@ -361,8 +369,14 @@ export async function getChecklist(goalId) {
 export async function toggleChecklist(goalId, itemKey, isDone) {
   const u = await currentUser();
   if (mode === 'supabase') {
-    await sb.from('checklist_items').update({ is_done: isDone, done_at: isDone ? new Date().toISOString() : null })
-      .eq('goal_id', goalId).eq('item_key', itemKey);
+    const { data } = await sb.from('checklist_items').select('id').eq('goal_id', goalId).eq('item_key', itemKey).maybeSingle();
+    if (data) {
+      await sb.from('checklist_items').update({ is_done: isDone, done_at: isDone ? new Date().toISOString() : null })
+        .eq('goal_id', goalId).eq('item_key', itemKey);
+    } else {
+      await sb.from('checklist_items').insert({ goal_id: goalId, item_key: itemKey, label: itemKey, is_done: isDone,
+        done_at: isDone ? new Date().toISOString() : null });
+    }
     return;
   }
   const d = readJSON(LS.data(u.id), emptyData());

@@ -6,7 +6,8 @@ import * as S from './store.js';
 import { judgeAll, resolveCombination, filterByGoal, VERDICT, CODE, koreanAge } from './rules.js';
 import { buildBlueprint, feasibility, simulate, tradeoff, progress, money, monthlyPayment, ddayFrom,
          debtSummary, applyRepayment, totalMonthlyDue, DEBT_LABEL,
-         allocationScenarios, lumpsumScenarios, repayAdvice, SAVING_BENCHMARK_RATE } from './calc.js';
+         allocationScenarios, lumpsumScenarios, repayAdvice, SAVING_BENCHMARK_RATE,
+         simulateV4Scenarios } from './calc.js';
 import { renderDebtEditor, collectDebts, validateDebts } from './debtform.js';
 import * as FT from './fintox.js';
 import * as CR from './credit.js';
@@ -24,14 +25,17 @@ const STEPS = [
   { id: 'step1', n: 'STEP 1', title: '받을 수 있는 정책 찾기', sub: '4단계 판정 결과에서 적용할 정책을 고릅니다' },
   { id: 'step2', n: 'STEP 2', title: '필요한 돈 계산하기', sub: '목표 금액과 부족분을 확인합니다' },
   { id: 'step3', n: 'STEP 3', title: '저축 계획 시뮬레이션', sub: '정책을 비교하고 최종 하나를 확정합니다' },
-  { id: 'step4', n: 'STEP 4', title: '소비 습관 진단', sub: '결제 내역으로 저축 방해 요소를 찾습니다 · 상시 이용' },
+  { id: 'step4', n: 'STEP 4', title: '실행 센터', sub: '현금흐름·신용·목표일까지의 행동을 관리합니다' },
   { id: 'step5', n: 'STEP 5', title: '실행 로드맵', sub: '신청 시점까지 할 일을 관리합니다' },
 ];
+
+const V4_ACTION_KEYS = ['cashflow_review', 'emergency_review', 'risk_review', 'credit_review', 'cashout_review'];
+const readinessItems = (items) => items.filter((item) => V4_ACTION_KEYS.includes(item.item_key));
 
 const state = {
   user: null, profile: null, goal: null, mode: 'local',
   policies: [], groups: {}, judged: [], selected: new Set(), finalId: null,
-  txs: [], checklist: [],
+  txs: [], checklist: [], instruments: [], instrumentMeta: null,
 };
 
 /* ============================== 부트 ====================================== */
@@ -47,14 +51,17 @@ async function boot() {
   state.goal = await S.getActiveGoal();
   if (!state.goal) { location.replace('./index.html'); return; }
 
-  const [db, mvno] = await Promise.all([
+  const [db, mvno, instrumentDb] = await Promise.all([
     (await fetch('./data/policies.json')).json(),
     (await fetch('./data/mvno.json')).json(),
+    (await fetch('./data/instruments.json')).json(),
   ]);
   state.policies = db.policies;
   state.groups = db.exclusive_groups;
   state.meta = db.meta;
   state.mvno = mvno;
+  state.instruments = instrumentDb.instruments || [];
+  state.instrumentMeta = instrumentDb;
 
   const saved = await S.getGoalPolicies(state.goal.id);
   saved.forEach((r) => state.selected.add(r.policy_id));
@@ -663,10 +670,11 @@ function viewStep3(v) {
         <div id="simres" style="margin-top:12px"></div>
       </div>
 
-      <div><div id="rightCol"></div>${dSum.has ? '<div id="debtBox" style="margin-top:14px"></div>' : ''}</div>
+      <div><div id="rightCol"></div><div id="v4Box" style="margin-top:14px"></div>${dSum.has ? '<div id="debtBox" style="margin-top:14px"></div>' : ''}</div>
     </div>
 
     <div style="margin-top:20px">
+      <div id="instrumentBox"></div>
       <div class="mini" style="margin-bottom:8px">정책별 비교 · 실행할 하나를 확정하세요</div>
       <div id="cmp" class="grid2"></div>
       <div id="companion"></div>
@@ -798,6 +806,60 @@ function viewStep3(v) {
         </div>
         <div class="src">목표 금액을 바꾸면 주택가격·보증금 상한 조건에 걸리는 정책이 달라집니다.</div>
       </div>` : ''}`;
+
+    const v4 = cur.gg.costs != null ? simulateV4Scenarios({
+      initialCash: cur.bp.currentAsset,
+      contribution: cur.gg.goal_contribution || saving,
+      months: cur.gg.target_months,
+      requiredEquity: cur.bp.requiredEquity,
+      model: 'DEFENSIVE',
+      glidePath: true,
+    }) : null;
+    $('#v4Box').innerHTML = v4 ? `<div class="card" style="box-shadow:none;background:var(--slate-bg)">
+      <div class="mini">SYNTHETIC_V4 · 방어형 목표일 보호</div>
+      <div style="font-size:13px;color:var(--muted);line-height:1.6;margin:7px 0 10px">
+        가상 경로이며 실제 ETF 예측이 아닙니다. 19개월차부터 채권·현금, 22개월차부터 현금 100%로 축소합니다.
+      </div>
+      <table class="wf"><thead><tr><th>경로</th><th>목표일 자산</th><th>부족액</th></tr></thead><tbody>
+        ${[['STRESS', '스트레스'], ['BASE', '기준'], ['GOOD', '우호']].map(([key, label]) => `<tr>
+          <td>${label}</td><td class="amt">${num(v4[key].goalAssets)}원</td>
+          <td class="amt" style="color:${v4[key].shortfall ? 'var(--red)' : 'var(--green)'}">${num(v4[key].shortfall)}원</td>
+        </tr>`).join('')}
+      </tbody></table>
+      <div class="src">시뮬레이션 가정 · 개인 세전 · 수익은 보장되지 않습니다.</div>
+    </div>` : '';
+
+    const instrumentMeta = state.instrumentMeta || {};
+    $('#instrumentBox').innerHTML = state.instruments.length ? `<div class="card" style="box-shadow:none;margin-bottom:16px;background:#fff">
+      <div class="card-h" style="margin-bottom:6px">
+        <div><div class="mini">INSTRUMENT COMPARISON</div><div class="card-t" style="font-size:17px;margin-top:4px">채권·대표 ETF·시장 관심 비교</div></div>
+        <span class="badge blue">DEMO 스냅샷</span>
+      </div>
+      <div class="card-sub">관측 지표와 모델 가정을 분리해 표시합니다. 비교는 가능하지만, 24개월 필수 주거자금에 자동 적용하지 않습니다.</div>
+      <div class="grid3" style="margin-top:14px;gap:10px">
+        ${state.instruments.slice(0, 3).map((item) => {
+          const applicable = g.target_months >= 36 && item.category !== 'market_interest';
+          return `<div class="card" style="box-shadow:none;padding:14px;background:var(--slate-bg)">
+            <div style="display:flex;justify-content:space-between;gap:8px;align-items:start">
+              <div><span class="chip">${esc(item.category_label)}</span><div style="font-size:17px;font-weight:800;color:var(--navy);margin-top:8px">${esc(item.ticker)}</div></div>
+              <span class="badge ${applicable ? 'green' : 'gray'}">${applicable ? '적용 검토' : '비교 전용'}</span>
+            </div>
+            <div style="font-size:12px;color:var(--muted);margin-top:4px">${esc(item.name)}</div>
+            <div style="display:grid;gap:6px;margin-top:12px">
+              ${item.metrics.map((metric) => `<div style="display:flex;justify-content:space-between;gap:8px;font-size:12px"><span style="color:var(--muted)">${esc(metric.label)}</span><b style="color:var(--navy)">${esc(metric.value)}</b></div>`).join('')}
+            </div>
+            <div class="warn" style="margin-top:12px;font-size:11.5px;line-height:1.5">${esc(item.fit)}</div>
+            <details style="margin-top:10px"><summary style="font-size:12px;font-weight:700;color:var(--blue);cursor:pointer">위험·가정·출처 보기</summary>
+              <div style="font-size:11.5px;color:var(--muted);line-height:1.6;margin-top:8px">
+                <div><b>위험:</b> ${esc(item.risk)}</div><div><b>가정:</b> ${esc(item.assumption)}</div>
+                <div class="src" style="margin-top:6px">기준일 ${esc(instrumentMeta.as_of || '확인 불가')} · 확인일 ${esc(instrumentMeta.checked_on || '확인 불가')} · <a href="${esc(item.source.url)}" target="_blank" rel="noopener">${esc(item.source.name)}</a></div>
+              </div>
+            </details>
+          </div>`;
+        }).join('')}
+      </div>
+      <div class="src" style="margin-top:12px">${esc(instrumentMeta.mode || 'DEMO')} · 달러 자산 지표는 원화 실현수익률이 아닙니다. YTM·SEC 수익률은 보장 수익률이 아닙니다.</div>
+    </div>` : '';
 
     /* 정책 비교 카드 */
     const cand = cur.judged.filter((r) => picked.includes(r.policy_id) && r.policy.finance.type === 'loan');
@@ -981,185 +1043,108 @@ function viewStep3(v) {
   redraw();
 }
 
-/* ======================== STEP 4 · FinTox ================================= */
+/* ======================== STEP 4 · 실행 센터 ============================== */
 function viewStep4(v) {
   const g = state.goal;
-  const target = g.monthly_saving || 0;
+  const income = g.monthly_income || Math.round((state.profile.annual_income || 0) / 12);
+  const essential = g.essential_expense || 0;
+  const debt = g.debt_payment || totalMonthlyDue((state.profile && state.profile.debts) || []);
+  const emergencyTopup = g.emergency_topup || 0;
+  const flexible = g.flexible_budget != null ? g.flexible_budget : Math.max(0, income - essential - debt - (g.monthly_saving || 0));
+  const limit = Math.max(0, income - essential - debt - flexible - emergencyTopup);
+  const current = g.monthly_saving || 0;
+  const actions = [
+    { key: 'cashflow_review', label: '목표·월 현금흐름 확인', done: true },
+    { key: 'emergency_review', label: `비상금 ${money(g.emergency_reserved || 0)}원 분리 확인`, done: true },
+    { key: 'risk_review', label: '위험·가정 설명 확인', done: false },
+    { key: 'credit_review', label: '학자금 상환일·신용정보 공식 경로 확인', done: false },
+    { key: 'cashout_review', label: '현금화·납입 일정 저장', done: false },
+  ];
+  const doneKeys = new Set(state.checklist.filter((c) => c.is_done).map((c) => c.item_key));
+  const isDone = (a) => a.done || doneKeys.has(a.key);
+  const done = actions.filter(isDone).length;
 
   v.append(el(`<section class="card">
-    <div class="card-h"><div class="card-t">STEP 4 · 소비 습관 진단</div><span class="tag">언제든 이용 가능</span></div>
-    <p class="card-sub">결제 문자나 카드 이용내역을 붙여넣으면, 그 소비가 <b>목표 달성 시점에 주는 영향</b>을 계산합니다.
-      감정이나 심리를 추측하지 않고 명시적 규칙으로만 채점합니다.</p>
+    <div class="card-h"><div class="card-t">STEP 4 · 실행 센터</div><span class="tag">행동 기록</span></div>
+    <p class="card-sub">예상 절감액을 자동으로 납입액에 더하지 않고, 사용자가 확인한 현금흐름과 실행 행동만 계획에 반영합니다.</p>
 
-    <div class="field">
-      <label>결제 문자 붙여넣기 (여러 줄 가능)</label>
-      <textarea class="inp" id="paste" rows="5" placeholder="[신한체크승인] 09/01 23:40 배달의민족 34,000원
-01/14 18:12 치킨에 꼬치다(외대역점) 43,400원"></textarea>
+    <div class="grid4">
+      <div class="stat"><div class="l">월 실수령</div><div class="v">${money(income)}</div></div>
+      <div class="stat"><div class="l">필수생활비</div><div class="v">${money(essential)}</div></div>
+      <div class="stat"><div class="l">유동예산</div><div class="v">${money(flexible)}</div></div>
+      <div class="stat"><div class="l">월 납입 한도</div><div class="v blue">${money(limit)}</div></div>
     </div>
-    <div style="display:flex;gap:10px;flex-wrap:wrap">
-      <button class="btn" id="ana">분석하기</button>
-      <button class="btn ghost" id="sample">샘플 내역 불러오기</button>
-      ${state.txs.length ? `<button class="btn ghost" id="clear">내역 비우기</button>` : ''}
-    </div>
-    <div id="ftres" style="margin-top:20px"></div>
 
-    <div class="note" style="margin-top:20px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
-      <span>${state.finalId
-        ? '↓ 최종 점검: STEP 5 실행 로드맵에서 준비도와 신청 일정을 확인하세요'
-        : '먼저 STEP 3에서 실행할 정책을 확정하면 실행 로드맵이 열립니다'}</span>
-      <a class="btn sm" href="${state.finalId ? '#step5' : '#step3'}">
-        ${state.finalId ? 'STEP 5 실행 로드맵으로 →' : 'STEP 3으로 돌아가기 →'}</a>
+    <div class="card" style="box-shadow:none;margin-top:16px;background:var(--slate-bg)">
+      <div class="mini">CASHFLOW PLAN</div>
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;margin-top:6px">
+        <b style="font-size:17px;color:var(--navy)">월 목표 납입액</b><b id="step4SavingValue" style="font-size:21px;color:var(--blue)">${num(current)}원</b>
+      </div>
+      <input id="step4Saving" type="range" min="0" max="${Math.max(limit, current)}" step="10000" value="${current}" style="width:100%;accent-color:var(--blue);margin-top:12px">
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted2)"><span>0원</span><span>${money(Math.max(limit, current))}</span></div>
+      <div id="step4SavingNote" class="${current > limit ? 'warn' : 'note'}" style="margin-top:12px">
+        ${current > limit ? `현재 계획이 한도를 ${money(current - limit)} 초과합니다.` : `현재 계획은 월 한도 안에 있습니다. 유동예산 ${money(flexible)}원을 별도 유지합니다.`}
+      </div>
+      <button id="saveStep4Plan" class="btn full" style="margin-top:12px" ${current > limit ? 'disabled' : ''}>확인한 납입 계획 저장</button>
     </div>
-    <div class="src" style="margin-top:10px">
-      통신비·보험료 같은 성실납부 실적이 있으면 <a href="#credit">신용 빌드업</a>에서 평가사 제출자료를 만들 수 있습니다.
+
+    <div class="card" style="box-shadow:none;margin-top:16px">
+      <div class="mini">ACTION CENTER · ${done}/${actions.length} 완료</div>
+      <div class="bar lg" style="margin:10px 0 14px"><i id="step4Progress" style="width:${Math.round(done / actions.length * 100)}%"></i></div>
+      <div style="display:grid;gap:9px">
+        ${actions.map((a) => `<label class="check ${isDone(a) ? 'on' : ''}" data-step4-action="${a.key}">
+          <input type="checkbox" ${isDone(a) ? 'checked' : ''} ${a.done ? 'disabled' : ''}><span style="flex:1">${esc(a.label)}</span>
+          <span class="badge ${isDone(a) ? 'green' : 'gray'}">${isDone(a) ? '완료' : '확인 필요'}</span></label>`).join('')}
+      </div>
+      <div class="src" style="margin-top:12px">준비도는 목표 달성 확률·신용등급·대출 승인율이 아니라 확인한 행동의 비율입니다.</div>
+    </div>
+
+    <div class="grid2" style="margin-top:16px">
+      <a class="card" style="box-shadow:none;text-decoration:none" href="#credit"><div class="mini">CREDIT CARE</div><div class="card-t" style="font-size:16px;margin-top:5px">신용 관리 열기</div><div class="card-sub">상환일 확인, 연체 방지, 공식 신용정보 확인</div></a>
+      <a class="card" style="box-shadow:none;text-decoration:none" href="#step5"><div class="mini">CASH OUT</div><div class="card-t" style="font-size:16px;margin-top:5px">현금화 일정 열기</div><div class="card-sub">목표일 6개월·3개월 전과 잔금일 행동 확인</div></a>
     </div>
   </section>`));
 
-  $('#sample').addEventListener('click', async () => {
-    const txt = await (await fetch('./data/dummy_tx.txt')).text();
-    $('#paste').value = txt.trim();   // 통신비·보험료 자동이체까지 포함해야 신용 빌드업이 동작한다
+  const slider = $('#step4Saving');
+  const value = $('#step4SavingValue');
+  const note = $('#step4SavingNote');
+  const save = $('#saveStep4Plan');
+  slider.addEventListener('input', () => {
+    const next = Number(slider.value);
+    value.textContent = num(next) + '원';
+    const over = next > limit;
+    note.className = over ? 'warn' : 'note';
+    note.textContent = over ? `현재 계획이 한도를 ${money(next - limit)} 초과합니다.` : `현재 계획은 월 한도 안에 있습니다. 유동예산 ${money(flexible)}원을 별도 유지합니다.`;
+    save.disabled = over;
   });
-  $('#clear')?.addEventListener('click', () => { alert('로컬 모드에서는 브라우저 저장소를 비우면 초기화됩니다.'); });
-
-  $('#ana').addEventListener('click', async () => {
-    const parsed = FT.parseBulk($('#paste').value, new Date().getFullYear());
-    if (!parsed.length) { alert('인식할 수 있는 결제 내역이 없습니다. 날짜·금액이 포함된 문자를 넣어 주세요.'); return; }
-    await S.addTransactions(parsed);
-    state.txs = await S.getTransactions();
-    $('#paste').value = '';
-    renderFT();
+  save.addEventListener('click', async () => {
+    const next = Number(slider.value);
+    await S.updateGoal(g.id, { monthly_saving: next, goal_contribution: next });
+    g.monthly_saving = next;
+    g.goal_contribution = next;
+    alert('확인한 월 납입 계획을 저장했습니다.');
+    route();
   });
-
-  renderFT();
-
-  function renderFT() {
-    const box = $('#ftres');
-    if (!state.txs.length) { box.innerHTML = '<div class="empty">아직 등록된 결제 내역이 없습니다.</div>'; return; }
-    const hist = state.txs.map((t) => ({ ...t, hour: t.hour ?? new Date(t.occurred_at).getHours() }))
-      .sort((a, b) => new Date(b.occurred_at) - new Date(a.occurred_at));
-    const latest = hist[0];
-    const rest = hist.slice(1);
-    const sc = FT.scoreTransaction(latest, { history: rest, monthlyTarget: target, monthlyBudget: monthlyBudget() });
-    const rep = FT.monthlyReport(hist, { monthlyTarget: target });
-    const verdictMap = Object.fromEntries(state.judged.map((r) => [r.policy_id, r.verdict]));
-    const rx = FT.prescribe(rep, state.policies, verdictMap);
-    const nudge = FT.nudgeFor(latest, sc);
-    const nudgeState = getNudge();
-    const { bp: bpNow } = currentPlan();
-    const impact = FT.nudgeImpact(nudgeState.total, g.monthly_saving, bpNow.additionalNeeded);
-    const tone = { safe: 'green', watch: 'yellow', caution: 'red' }[sc.level];
-
-    box.innerHTML = `
-      <div class="card" style="box-shadow:none;background:var(--purple-bg);border-color:var(--purple-bd)">
-        <div class="mini" style="color:var(--purple)">RISK INDEX · 최근 결제</div>
-        <div style="display:flex;gap:22px;align-items:center;margin-top:12px;flex-wrap:wrap">
-          <div style="width:86px;height:86px;border-radius:50%;border:6px solid var(--purple);display:grid;place-items:center;background:#fff">
-            <div style="font-size:21px;font-weight:800;color:#6d28d9">${sc.score}</div>
-            <div style="font-size:11px;color:var(--muted);margin-top:-4px">/100</div>
-          </div>
-          <div style="flex:1;min-width:220px">
-            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
-              ${sc.tags.map((t) => `<span class="chip">${esc(t)}</span>`).join('')}
-            </div>
-            <div style="font-size:17px;font-weight:800;color:#5b21b6">소비위험지수: ${esc(sc.levelLabel)}</div>
-            <div style="font-size:13px;color:var(--muted);margin-top:4px">
-              ${esc(latest.merchant_raw)} · ${num(latest.amount)}원</div>
-          </div>
-        </div>
-        <div style="margin-top:14px;display:grid;gap:6px">
-          ${sc.breakdown.map((b) => `<div style="display:flex;align-items:center;gap:10px;font-size:12px">
-            <span style="width:104px;font-weight:700;color:var(--navy)">${esc(b.label)}</span>
-            <div class="bar" style="flex:1;height:8px"><i style="width:${(b.point / b.max) * 100}%;background:var(--purple)"></i></div>
-            <span style="width:56px;text-align:right;color:var(--muted)">${b.point}/${b.max}</span>
-            <span style="flex:1.2;color:var(--muted2)">${esc(b.fact)}</span></div>`).join('')}
-        </div>
-        ${target ? `<div class="warn" style="margin-top:14px">이번 <b>${num(latest.amount)}원</b> 지출은 월 목표 저축액 ${num(target)}원의
-          <b>약 ${sc.goalSharePct}%</b>입니다. 감정을 추정하지 않고 목표 저축과의 상대적 영향만 계산합니다.</div>` : ''}
-      </div>
-
-      <div class="card" style="box-shadow:none;margin-top:16px;background:#f0fdf4;border-color:#bbf7d0">
-        <div class="mini" style="color:var(--green-tx)">SELF-SAVING NUDGE</div>
-        <div style="font-size:17px;font-weight:800;color:var(--navy);margin:6px 0 4px">
-          쓴 만큼의 ${nudge.ratePct}%를 지금 목표 저축으로 옮기세요</div>
-        <div style="font-size:13px;color:var(--muted);line-height:1.6">${esc(nudge.reason)}
-          소비를 되돌릴 수는 없지만, 일부를 즉시 저축으로 넘기면 목표 속도는 지킬 수 있습니다.</div>
-        <div style="display:flex;align-items:center;gap:16px;margin-top:14px;flex-wrap:wrap">
-          <div class="stat" style="text-align:left;background:#fff;min-width:150px">
-            <div class="l">이번 넛지 금액</div>
-            <div class="v green" style="font-size:26px">${num(nudge.amount)}원</div>
-            <div class="f">🧮 ${esc(nudge.formula)}${nudge.capped ? ' (상한 50,000원 적용)' : ''}</div>
-          </div>
-          <button class="btn sm" id="doNudge">이 금액 저축으로 옮기기</button>
-        </div>
-        ${nudgeState.total ? `
-          <div class="note" style="margin-top:14px">
-            💰 누적 넛지 저축 <b>${num(nudgeState.total)}원</b>
-            ${impact.days ? ` · 목표 도달을 약 <b>${impact.days}일</b> 앞당깁니다` : ''}
-            ${impact.pct ? ` (추가 필요자금의 ${impact.pct}%)` : ''}
-            <div style="font-size:11px;font-weight:500;margin-top:5px;opacity:.85">
-              최근: ${nudgeState.items.slice(0, 3).map((x) => `${esc(x.label)} ${num(x.amount)}원`).join(' · ')}
-            </div>
-          </div>` : ''}
-      </div>
-
-      <div class="card" style="box-shadow:none;margin-top:16px">
-        <div class="mini">SMART PRESCRIPTION</div>
-        <div style="font-size:17px;font-weight:800;color:var(--navy);margin:6px 0 4px">소비를 막기보다 실질지출을 낮춥니다</div>
-        <div style="font-size:13px;color:var(--muted);margin-bottom:14px">총 절감 예상 <b style="color:var(--blue)">${num(rx.reduce((s, r) => s + r.saving, 0))}원</b></div>
-        <div style="display:grid;gap:10px">
-          ${rx.map((r) => `<div style="border:1px solid ${r.type === 'warning' ? '#fde68a' : 'var(--bd)'};background:${r.type === 'warning' ? '#fffbe3' : '#fff'};border-radius:12px;padding:14px 16px">
-            <div style="display:flex;justify-content:space-between;gap:10px;align-items:center">
-              <b style="font-size:14px;color:var(--navy)">${esc(r.title)}</b>
-              ${r.saving ? `<span class="badge green">-${num(r.saving)}원</span>` : ''}</div>
-            <div style="font-size:12.5px;color:var(--muted);line-height:1.6;margin-top:5px">${esc(r.body)}</div>
-            <div class="src">근거: ${esc(r.basis)}</div></div>`).join('')}
-        </div>
-      </div>
-
-      <div class="card" style="box-shadow:none;margin-top:16px">
-        <div class="mini">MONTHLY REPORT</div>
-        <div class="grid4" style="margin-top:10px">
-          <div class="stat"><div class="l">등록 건수</div><div class="v">${rep.count}건</div></div>
-          <div class="stat"><div class="l">총 지출</div><div class="v">${num(rep.total)}원</div></div>
-          <div class="stat"><div class="l">야간(22~06시)</div><div class="v">${rep.night.pct}%</div><div class="f">${rep.night.count}건</div></div>
-          <div class="stat"><div class="l">업종 미상</div><div class="v ${rep.unknownPct >= 20 ? 'red' : ''}">${rep.unknownPct}%</div><div class="f">${rep.unknownCount}건</div></div>
-        </div>
-        <div style="margin-top:16px;display:grid;gap:7px">
-          ${rep.categories.slice(0, 8).map((c) => `<div>
-            <div style="display:flex;justify-content:space-between;font-size:12.5px;font-weight:600"><span>${esc(c.cat)}</span><span>${num(c.amount)}원 · ${c.pct}%</span></div>
-            <div class="bar" style="height:7px"><i style="width:${c.pct}%"></i></div></div>`).join('')}
-        </div>
-        ${rep.repeats.length ? `<div class="note" style="margin-top:14px">🔁 30일 내 3회 이상 반복: ${rep.repeats.slice(0, 6).map((r) => `${esc(r.name)}×${r.count}`).join(' · ')}</div>` : ''}
-      </div>
-      <div id="aiFintox"></div>`;
-
-    fillAI('aiFintox', 'explain_fintox', {
-      최근결제: { 가맹점: latest.merchant_raw, 금액: latest.amount, 분류: latest.category, 시각: `${latest.hour}시` },
-      위험점수: sc.score, 판정: sc.levelLabel,
-      월저축목표: target, 목표대비_비중_퍼센트: sc.goalSharePct,
-      점수_산출근거: sc.breakdown.map((b) => ({ 항목: b.label, 점수: b.point, 만점: b.max, 근거: b.fact })),
-      월간요약: { 총지출: rep.total, 야간비중: rep.night.pct, 업종미상비중: rep.unknownPct,
-        상위카테고리: rep.categories.slice(0, 3).map((c) => ({ 분류: c.cat, 금액: c.amount, 비중: c.pct })) },
-      제안가능한_공공혜택: rx.map((r) => ({ 제목: r.title, 절감예상: r.saving })),
-    });
-
-    $('#doNudge')?.addEventListener('click', () => {
-      addNudge(nudge.amount, latest.merchant_norm || latest.merchant_raw);
-      renderFT();
-    });
-  }
-
-  function monthlyBudget() {
-    const income = state.profile.annual_income / 12;
-    return Math.max(300000, Math.round(income - (g.monthly_saving || 0)));
-  }
+  v.querySelectorAll('[data-step4-action]').forEach((label) => label.addEventListener('click', async (e) => {
+    e.preventDefault();
+    const key = label.dataset.step4Action;
+    const item = state.checklist.find((c) => c.item_key === key);
+    if (!item) {
+      await S.toggleChecklist(g.id, key, true);
+    } else {
+      item.is_done = !item.is_done;
+      await S.toggleChecklist(g.id, key, item.is_done);
+    }
+    state.checklist = await S.getChecklist(g.id);
+    route();
+  }));
 }
 
 /* ======================== STEP 5 · 실행 로드맵 ============================ */
 function viewStep5(v) {
   const g = state.goal;
   const { bp } = currentPlan();
-  const pr = progress(g, bp, state.checklist);
+  const pr = progress(g, bp, readinessItems(state.checklist));
   const finalPolicy = state.policies.find((p) => p.policy_id === state.finalId);
   const docState = finalPolicy ? getDocs(finalPolicy.policy_id) : {};
   const docDone = finalPolicy && finalPolicy.documents
@@ -1170,8 +1155,8 @@ function viewStep5(v) {
   const nodes = [
     { d: `D-${months * 30}`, t: '목표 설정 및 저축 플랜 확정', s: 'done',
       p: `${finalPolicy ? finalPolicy.short_name + ' 기준 ' : ''}필요 자금 ${money(bp.additionalNeeded)} 저축 목표 설정 완료.` },
-    { d: `D-${Math.round(months * 30 * 0.8)}`, t: '소비 진단 연동 및 월 저축 자동화', s: 'now',
-      p: `월 ${num(g.monthly_saving || bp.recommendedMonthly)}원 저축을 지키기 위해 지출 누수를 상시 점검합니다.` },
+    { d: `D-${Math.round(months * 30 * 0.8)}`, t: '현금흐름 확인 및 월 납입 자동화', s: 'now',
+      p: `월 ${num(g.monthly_saving || bp.recommendedMonthly)}원 납입을 지키기 위해 예산과 상환일을 확인합니다.` },
     { d: `D-${Math.round(months * 30 * 0.4)}`, t: '정책 자격 사전 재검증', s: '',
       p: '무주택 요건과 소득·자산 변동 내역을 다시 확인하고 제출서류를 준비합니다.' },
     { d: 'D-DAY', t: '정책 실행 및 목표 달성', s: 'goal',
@@ -1306,13 +1291,13 @@ function viewDashboard(v) {
   const g = state.goal;
   const { bp } = currentPlan();
   const sim = simulate(bp, g, g.monthly_saving || bp.recommendedMonthly);
-  const pr = progress(g, bp, state.checklist, sim.monthsNeeded);
+  const pr = progress(g, bp, readinessItems(state.checklist), sim.monthsNeeded);
   const finalPolicy = state.policies.find((p) => p.policy_id === state.finalId);
 
   const next = !state.selected.size ? ['받을 수 있는 정책을 골라 주세요', '#step1']
     : !state.finalId ? ['시뮬레이션에서 실행할 정책을 확정해 주세요', '#step3']
     : state.checklist.some((c) => !c.is_done) ? ['실행 준비도 체크리스트를 완료해 주세요', '#step5']
-    : ['소비 진단으로 저축 계획을 점검해 보세요', '#step4'];
+    : ['실행 센터에서 현금흐름과 다음 행동을 확인해 보세요', '#step4'];
 
   v.append(el(`<section class="card">
     <div class="card-h">
@@ -1386,7 +1371,7 @@ function viewDashboard(v) {
     const hist = state.txs.map((t) => ({ ...t, hour: t.hour ?? new Date(t.occurred_at).getHours() }));
     const rep = FT.monthlyReport(hist, { monthlyTarget: g.monthly_saving });
     v.append(el(`<section class="card">
-      <div class="card-h"><div class="card-t" style="font-size:16px">소비 요약</div><a class="btn ghost sm" href="#step4">진단 열기</a></div>
+      <div class="card-h"><div class="card-t" style="font-size:16px">실행 센터</div><a class="btn ghost sm" href="#step4">센터 열기</a></div>
       <div class="grid4">
         <div class="stat"><div class="l">등록 건수</div><div class="v" style="font-size:17px">${rep.count}건</div></div>
         <div class="stat"><div class="l">총 지출</div><div class="v" style="font-size:17px">${num(rep.total)}원</div></div>
@@ -1507,7 +1492,7 @@ function viewCredit(v) {
           가점 반영 여부와 폭은 평가사 내부 기준에 따라 달라지므로, 점수 상승을 보장하지 않습니다.
         </div>`
       : `<div class="warn" style="margin-top:14px">
-          아직 찾은 납부실적이 없습니다. <a href="#step4" style="color:inherit;text-decoration:underline">STEP 4 소비 습관 진단</a>에서
+          아직 찾은 납부실적이 없습니다. <a href="#step4" style="color:inherit;text-decoration:underline">STEP 4 실행 센터</a>에서
           통신비·보험료가 포함된 결제내역을 등록하면 자동으로 인식합니다.</div>`}
     </div>
 
