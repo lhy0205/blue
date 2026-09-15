@@ -314,25 +314,27 @@ body.show-map .label{opacity:1;transform:translateY(0)}
    그림에 '로그인 / 회원가입'이 그려져 있다. 로그인한 사람에게는
    그 자리를 덮어 이름과 로그아웃을 보여준다. */
 .me{
-  position:absolute;z-index:24;left:78%;top:1.4%;width:20.5%;height:7.6%;
-  display:none;align-items:center;justify-content:flex-end;gap:7px
+  /* 그림에 '로그인 / 회원가입' 이 그려져 있다. 로그인한 사람에게는 그 위를
+     덮어야 하므로, 칩 두 개를 그려진 버튼 두 개와 같은 자리·같은 크기로 편다.
+     좁게 두면 뒤에 그려진 '로그인' 이 옆으로 비어져 나온다. */
+  position:absolute;z-index:24;left:81.3%;top:1.5%;width:17.9%;height:7.5%;
+  display:none;align-items:stretch;gap:1.2%
 }
 body[data-auth="in"] .me{display:flex}
 body[data-auth="in"] .h-login,
 body[data-auth="in"] .h-signup,
 body[data-auth="in"] .t-login,
 body[data-auth="in"] .t-signup{display:none}
-.me .nm{
-  background:rgba(255,255,255,.94);color:var(--ink);border-radius:999px;
-  padding:7px 13px;font-size:12.5px;font-weight:800;white-space:nowrap;
-  box-shadow:0 8px 22px rgba(0,0,0,.18)
-}
+.me .nm,
 .me button{
-  background:rgba(20,35,18,.84);color:#fff;border:0;border-radius:999px;
-  padding:7px 13px;font-size:12.5px;font-weight:700;cursor:pointer;
-  backdrop-filter:blur(8px);box-shadow:0 8px 22px rgba(0,0,0,.18)
+  flex:1;display:grid;place-items:center;border-radius:999px;
+  font-family:inherit;font-size:clamp(9px,.9vw,13px);font-weight:800;
+  white-space:nowrap;letter-spacing:-.02em;
+  box-shadow:0 6px 18px rgba(0,0,0,.22)
 }
-.me button:hover{background:rgba(20,35,18,.96)}
+.me .nm{background:#fff;color:var(--ink)}
+.me button{background:rgba(20,35,18,.94);color:#fff;border:0;cursor:pointer;transition:.14s}
+.me button:hover{background:#101d0e}
 
 /* ───────────────────────── 도구 · 안내 ───────────────────────── */
 .tools{position:absolute;left:20px;top:20px;z-index:30;display:flex;gap:9px}

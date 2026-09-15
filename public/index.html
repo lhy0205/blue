@@ -166,15 +166,15 @@ const user = await currentUser();
 /* 장면(scene.js)이 잠긴 물건을 판단할 때 읽는다 */
 document.body.dataset.auth = user ? 'in' : 'out';
 
-/* 재접속 라우팅: 목표가 있으면 곧바로 목표 대시보드로.
-   단 '목표 바꾸기'(?new=1)로 일부러 들어온 경우는 되돌려보내지 않는다.
-   이 분기가 없으면 목표 변경 자체가 불가능하다 — 눌러도 대시보드로 튕긴다. */
+/* 예전에는 목표가 있으면 여기서 곧바로 대시보드로 보냈다.
+   메인이 단순한 소개 페이지였을 때는 맞는 동작이었지만, 지금은 이 숲이
+   내비게이션 자체다 — 마이페이지도 로드맵도 기능 설명도 전부 여기서 간다.
+   그대로 두면 로그인한 사람은 메인을 영영 볼 수 없다. 실제로 로그아웃해야
+   들어와진다는 제보가 있었다. 그래서 보내지 않는다.
+   목표가 있는 사람은 포리를 누르면 대시보드로 간다. */
 const wantsNew = new URLSearchParams(location.search).has('new');
 let currentGoal = null;
-if (user) {
-  currentGoal = await getActiveGoal();
-  if (currentGoal && !wantsNew) location.replace('./app.html#dashboard');
-}
+if (user) currentGoal = await getActiveGoal();
 document.body.dataset.goal = currentGoal ? 'y' : 'n';
 if (wantsNew) { const d = document.getElementById('goalDlg'); if (d) d.hidden = false; }
 
