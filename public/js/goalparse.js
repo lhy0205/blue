@@ -32,7 +32,17 @@ function evalMoney(expr) {
 }
 
 const MONEY_RE = /((?:\d[\d,.]*\s*(?:억|천만|백만|만|천)\s*)+(?:원)?)/g;
-const HAVE_RE = /(있|보유|모았|모은|자산|현재|지금|가지고)/;
+/* 보유자산 표지는 금액 '뒤'에 오는 말과 '앞'에 오는 말이 다르다.
+ * 뒤: "800만 원 있어요"   앞: "지금 800만", "모아둔 1,200만"
+ * 이걸 한 덩어리로 묶어 뒤쪽만 검사하면, 금액이 다음 절의 '지금'을 주워
+ * 목표와 보유자산이 통째로 뒤바뀐다. */
+const HAVE_AFTER_RE  = /(있|보유|모았|모은|가지고|들고)/;
+/* 표지와 금액 사이에 짧은 말이 끼기도 한다 — "모아둔 건 1,200만" */
+const HAVE_BEFORE_RE = /(자산은?|현재|지금|보유(?:한|하고)?|모아둔|모아놓은|가진)(?:\s*(?:건|것|돈|금액|액수|정도))?\s*$/;
+
+/* 금액 뒤 문구는 '그 금액에 붙은 말'까지만 봐야 한다.
+ * 문장이 끊기거나(. , ?) 다음 금액이 시작되면 거기서 멈춘다. */
+const AFTER_STOP_RE = /[.!?,;\n]|\d/;
 
 /* 부채 — 금액 '앞'에 오는 명사로 판별한다. ("학자금 대출 400만 원 있어")
  * '있어'가 붙어 있어도 보유자산이 아니라 갚아야 할 돈이다.
@@ -70,13 +80,16 @@ export function parseGoal(text) {
   while ((m = MONEY_RE.exec(raw))) {
     const value = evalMoney(m[1]);
     if (!value) continue;
-    /* 금액 뒤 12글자 안에 '있어/보유/자산' 류가 오면 현재 보유 자산으로 본다 */
-    const after = raw.slice(m.index + m[1].length, m.index + m[1].length + 14);
+    /* 금액 뒤에 '있어/보유' 류가 붙으면 현재 보유 자산으로 본다.
+       단 다음 절까지 넘겨다보면 안 된다 — 거기서 뒤집힘이 생긴다. */
+    let after = raw.slice(m.index + m[1].length, m.index + m[1].length + 20);
+    const stop = after.search(AFTER_STOP_RE);
+    if (stop >= 0) after = after.slice(0, stop);
     const before = raw.slice(Math.max(0, m.index - 14), m.index);
     const isDebt = DEBT_HINT_RE.test(before) && !DEBT_EXCLUDE_RE.test(before);
     amounts.push({
       value, isDebt, before, after,
-      isHave: HAVE_RE.test(after) || /자산은?\s*$|현재\s*$|지금\s*$/.test(before),
+      isHave: HAVE_AFTER_RE.test(after) || HAVE_BEFORE_RE.test(before),
     });
   }
 
@@ -101,6 +114,14 @@ export function parseGoal(text) {
   if (rest.length) target_amount = Math.max(...rest.map((a) => a.value));
   /* 금액이 하나뿐인데 '있어'가 붙었으면 목표가 아니라 보유자산이다 */
   if (!target_amount && current_asset && usable.length === 1) target_amount = null;
+  /* 전부 '보유'로 읽혔는데 금액이 둘 이상이면 목표를 못 잡은 것이다.
+     목표 금액이 비어 있으면 이후 계산이 전부 0으로 무너지므로,
+     가장 큰 값을 목표로, 그다음을 보유자산으로 둔다. */
+  if (!target_amount && haves.length > 1) {
+    const big = [...haves].sort((a, b) => b.value - a.value);
+    target_amount = big[0].value;
+    current_asset = big[1].value;
+  }
   /* 목표가 보유자산보다 작으면 뒤바뀐 것으로 보고 교정 */
   if (target_amount && current_asset && target_amount < current_asset) {
     [target_amount, current_asset] = [current_asset, target_amount];
