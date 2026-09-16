@@ -1056,7 +1056,7 @@ function viewStep4(v) {
   const current = g.monthly_saving || 0;
   const actions = [
     { key: 'cashflow_review', label: '목표·월 현금흐름 확인', done: true },
-    { key: 'emergency_review', label: `비상금 ${money(g.emergency_reserved || 0)}원 분리 확인`, done: true },
+    { key: 'emergency_review', label: `비상금 ${money(g.emergency_reserved || 0)} 분리 확인`, done: true },
     { key: 'risk_review', label: '위험·가정 설명 확인', done: false },
     { key: 'credit_review', label: '학자금 상환일·신용정보 공식 경로 확인', done: false },
     { key: 'cashout_review', label: '현금화·납입 일정 저장', done: false },
@@ -1084,7 +1084,7 @@ function viewStep4(v) {
       <input id="step4Saving" type="range" min="0" max="${Math.max(limit, current)}" step="10000" value="${current}" style="width:100%;accent-color:var(--blue);margin-top:12px">
       <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted2)"><span>0원</span><span>${money(Math.max(limit, current))}</span></div>
       <div id="step4SavingNote" class="${current > limit ? 'warn' : 'note'}" style="margin-top:12px">
-        ${current > limit ? `현재 계획이 한도를 ${money(current - limit)} 초과합니다.` : `현재 계획은 월 한도 안에 있습니다. 유동예산 ${money(flexible)}원을 별도 유지합니다.`}
+        ${current > limit ? `현재 계획이 한도를 ${money(current - limit)} 초과합니다.` : `현재 계획은 월 한도 안에 있습니다. 유동예산 ${money(flexible)}을 별도 유지합니다.`}
       </div>
       <button id="saveStep4Plan" class="btn full" style="margin-top:12px" ${current > limit ? 'disabled' : ''}>확인한 납입 계획 저장</button>
     </div>
@@ -1115,7 +1115,7 @@ function viewStep4(v) {
     value.textContent = num(next) + '원';
     const over = next > limit;
     note.className = over ? 'warn' : 'note';
-    note.textContent = over ? `현재 계획이 한도를 ${money(next - limit)} 초과합니다.` : `현재 계획은 월 한도 안에 있습니다. 유동예산 ${money(flexible)}원을 별도 유지합니다.`;
+    note.textContent = over ? `현재 계획이 한도를 ${money(next - limit)} 초과합니다.` : `현재 계획은 월 한도 안에 있습니다. 유동예산 ${money(flexible)}을 별도 유지합니다.`;
     save.disabled = over;
   });
   save.addEventListener('click', async () => {
