@@ -7,7 +7,8 @@ import { judgeAll, resolveCombination, filterByGoal, VERDICT, CODE, koreanAge } 
 import { buildBlueprint, feasibility, simulate, tradeoff, progress, money, monthlyPayment, ddayFrom,
          debtSummary, applyRepayment, totalMonthlyDue, DEBT_LABEL,
          allocationScenarios, lumpsumScenarios, repayAdvice, SAVING_BENCHMARK_RATE,
-         simulateV4Scenarios } from './calc.js';
+         simulateV4Scenarios, compareV4Models, MODEL_ALLOCATIONS,
+         projectInstrument, marketInterestScore } from './calc.js';
 import { renderDebtEditor, collectDebts, validateDebts } from './debtform.js';
 import * as FT from './fintox.js';
 import * as CR from './credit.js';
@@ -675,6 +676,7 @@ function viewStep3(v) {
     </div>
 
     <div style="margin-top:20px">
+      <div id="modelBox"></div>
       <div id="instrumentBox"></div>
       <div class="mini" style="margin-bottom:8px">정책별 비교 · 실행할 하나를 확정하세요</div>
       <div id="cmp" class="grid2"></div>
@@ -830,6 +832,63 @@ function viewStep3(v) {
       <div class="src">시뮬레이션 가정 · 개인 세전 · 수익은 보장되지 않습니다.</div>
     </div>` : '';
 
+    /* ── 모델 포트폴리오 비교 ──────────────────────────────────────
+       V4 §11. 비중은 내부 설계 규칙이며 최적 포트폴리오가 아니다.
+       '적용 가능'과 '비교 전용'을 반드시 나누어 보여준다 — 24개월 필수
+       주거자금에 균형·성장형을 자동 배정하지 않기 위해서다. */
+    const planIn = {
+      initialCash: cur.bp.currentAsset,
+      contribution: cur.gg.goal_contribution || saving,
+      months: cur.gg.target_months,
+      requiredEquity: cur.bp.requiredEquity,
+      goalType: g.goal_type,
+      emergencyFundReady: (cur.gg.emergency_reserved || 0) > 0,
+    };
+    const models = cur.gg.costs != null ? compareV4Models(planIn) : null;
+    const MODEL_ORDER = ['CASH', 'DEFENSIVE', 'BALANCED', 'GROWTH'];
+    $('#modelBox').innerHTML = models ? `<div class="card" style="box-shadow:none;margin-bottom:16px">
+      <div class="card-h" style="margin-bottom:6px">
+        <div><div class="mini">MODEL COMPARISON</div>
+          <div class="card-t" style="font-size:17px;margin-top:4px">모델 배분 비교</div></div>
+        <span class="badge gray">시뮬레이션 가정</span>
+      </div>
+      <div class="card-sub">현금 보유(수익 0%)를 기준선으로 두고 비교합니다.
+        목표 기간과 비상금 확보 여부에 따라 적용할 수 없는 모델은 따로 표시합니다.</div>
+      <div class="grid4" style="margin-top:14px;gap:10px">
+        ${MODEL_ORDER.map((key) => {
+          const m = models[key];
+          const a = MODEL_ALLOCATIONS[key];
+          const base = m.scenarios.BASE;
+          const stress = m.scenarios.STRESS;
+          const bar = (w, color) => w > 0
+            ? `<span style="width:${(w * 100).toFixed(0)}%;background:${color}"></span>` : '';
+          return `<div class="card" style="box-shadow:none;padding:14px;background:${m.applicable ? '#fff' : 'var(--slate-bg)'};border-color:${m.applicable ? 'var(--bd-2)' : 'var(--bd)'}">
+            <div style="display:flex;justify-content:space-between;gap:8px;align-items:start">
+              <b style="font-size:15px;color:var(--ink)">${esc(a.label)}</b>
+              <span class="badge ${m.applicable ? 'green' : 'gray'}">${m.applicable ? '적용 가능' : '비교 전용'}</span>
+            </div>
+            <div style="font-size:11.5px;color:var(--muted);margin-top:4px">
+              주식 ${(a.stock * 100).toFixed(0)}% · 채권 ${(a.bond * 100).toFixed(0)}% · 현금 ${(a.cash * 100).toFixed(0)}%</div>
+            <div class="bar" style="height:7px;margin:9px 0;display:flex;background:var(--bd)">
+              ${bar(a.stock, 'var(--brand)')}${bar(a.bond, 'var(--ok)')}${bar(a.cash, 'var(--muted2)')}
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:12px;margin-top:8px">
+              <span style="color:var(--muted)">기준 경로</span><b class="num">${num(base.goalAssets)}원</b></div>
+            <div style="display:flex;justify-content:space-between;font-size:12px;margin-top:3px">
+              <span style="color:var(--muted)">기준 부족액</span>
+              <b class="num" style="color:${base.shortfall ? 'var(--risk)' : 'var(--ok)'}">${num(base.shortfall)}원</b></div>
+            <div style="display:flex;justify-content:space-between;font-size:12px;margin-top:3px">
+              <span style="color:var(--muted)">스트레스 경로</span>
+              <b class="num" style="color:var(--risk)">${num(stress.goalAssets)}원</b></div>
+            <div class="${m.applicable ? 'note' : 'warn'}" style="margin-top:10px;font-size:11.5px;line-height:1.5;padding:9px 11px">
+              ${esc(m.reasons[0])}</div>
+          </div>`;
+        }).join('')}
+      </div>
+      <div class="src" style="margin-top:12px">방어형은 목표일이 가까워질수록 위험자산을 줄입니다(19개월차 채권·현금, 22개월차 현금 100%).
+        수익률은 SYNTHETIC_V4 가정이며 상품 예측치가 아닙니다.</div>
+    </div>` : '';
+
     const instrumentMeta = state.instrumentMeta || {};
     $('#instrumentBox').innerHTML = state.instruments.length ? `<div class="card" style="box-shadow:none;margin-bottom:16px;background:#fff">
       <div class="card-h" style="margin-bottom:6px">
@@ -849,6 +908,29 @@ function viewStep3(v) {
             <div style="display:grid;gap:6px;margin-top:12px">
               ${item.metrics.map((metric) => `<div style="display:flex;justify-content:space-between;gap:8px;font-size:12px"><span style="color:var(--muted)">${esc(metric.label)}</span><b style="color:var(--navy)">${esc(metric.value)}</b></div>`).join('')}
             </div>
+            ${(() => {
+              /* 상품별 예상수익은 승인된 가정이 있는 상품에만 낸다.
+                 없으면 숫자를 지어내지 않고 이유를 적는다 (V4 §10). */
+              const pr = projectInstrument(item, { ...planIn, scenario: 'BASE' });
+              const mi = item.category === 'market_interest'
+                ? marketInterestScore(item.market_interest || {}) : null;
+              return `<div style="margin-top:11px;padding-top:10px;border-top:1px solid var(--bd)">
+                <div style="display:flex;justify-content:space-between;gap:8px;font-size:12px">
+                  <span style="color:var(--muted)">예상수익 · 기준 경로</span>
+                  ${pr.available
+                    ? `<b class="num" style="color:var(--ink)">${num(pr.goalAssets)}원</b>`
+                    : `<span style="color:var(--muted2)">산정 안 함</span>`}
+                </div>
+                ${pr.available
+                  ? `<div style="font-size:11px;color:var(--muted2);margin-top:3px">연 ${(pr.annualReturn * 100).toFixed(1)}% 가정 · 수익 기여 ${num(pr.returnComponent)}원</div>`
+                  : `<div style="font-size:11px;color:var(--muted2);line-height:1.5;margin-top:3px">${esc(pr.reason)}</div>`}
+                ${mi ? `<div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;margin-top:8px">
+                    <span style="color:var(--muted)">시장 관심도</span>
+                    ${mi.available ? `<b>${mi.score}</b>` : `<span style="color:var(--muted2)">산정 불가</span>`}
+                  </div>
+                  <div style="font-size:11px;color:var(--muted2);line-height:1.5;margin-top:3px">${esc(mi.available ? mi.formula : mi.reason)}</div>` : ''}
+              </div>`;
+            })()}
             <div class="warn" style="margin-top:12px;font-size:11.5px;line-height:1.5">${esc(item.fit)}</div>
             <details style="margin-top:10px"><summary style="font-size:12px;font-weight:700;color:var(--blue);cursor:pointer">위험·가정·출처 보기</summary>
               <div style="font-size:11.5px;color:var(--muted);line-height:1.6;margin-top:8px">
