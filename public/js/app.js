@@ -143,8 +143,12 @@ function openBasis() {
 
 function route() {
   const hash = (location.hash || '#dashboard').slice(1);
+  /* #invest 는 STEP 3 안의 투자 비교로 가는 지름길이다. 화면은 STEP 3 이고
+     자리만 다르다 — 단계를 하나 더 만들면 번호가 통째로 밀린다. */
+  const view = hash === 'invest' ? 'step3' : hash;
+
   renderGoalbar();
-  renderSteps(hash);
+  renderSteps(view);
   document.querySelectorAll('#gnb a').forEach((a) =>
     a.classList.toggle('on', a.getAttribute('href') === '#' + hash));
 
@@ -154,8 +158,30 @@ function route() {
     dashboard: viewDashboard, step1: viewStep1, step2: viewStep2, step3: viewStep3,
     step4: viewStep4, step5: viewStep5, credit: viewCredit,
     history: viewHistory, policies: viewPolicies, mypage: viewMypage,
-  }[hash] || viewDashboard)(v);
+  }[view] || viewDashboard)(v);
   window.scrollTo(0, 0);
+
+  /* 비교 카드는 화면을 그린 뒤 redraw() 가 채운다. 한 프레임만 기다리면
+     아직 상자가 없어 아무 데도 가지 않는다 — 내용이 들어올 때까지 본다. */
+  if (hash === 'invest') scrollToInvest();
+}
+
+const HEADER_GAP = 84;
+
+function scrollToInvest(deadline = Date.now() + 6000) {
+  /* 그 사이 다른 데로 갔으면 따라가지 않는다 */
+  if (location.hash !== '#invest') return;
+  const box = document.getElementById('modelBox');
+  /* 높이가 0 이면 아직 비어 있는 상자다. 거기로 보내면 엉뚱한 자리에 선다.
+     STEP 3 은 시뮬레이션을 기다렸다 그리므로 1초로는 모자랄 때가 있다. */
+  if (box && box.offsetHeight > 0) {
+    /* behavior:'smooth' 는 이 환경에서 조용히 무시된다 — 눈으로는 아무 일도
+       일어나지 않는다. 좌표를 직접 계산해 옮긴다. 상단 바 높이만큼 띄운다. */
+    const top = box.getBoundingClientRect().top + window.scrollY - HEADER_GAP;
+    window.scrollTo(0, Math.max(0, Math.round(top)));
+    return;
+  }
+  if (Date.now() < deadline) setTimeout(() => scrollToInvest(deadline), 60);
 }
 
 /* 잠긴 단계를 눌렀을 때 어디로 보내고 무엇을 안내할지.
@@ -672,12 +698,22 @@ function viewStep3(v) {
         <div id="simres" style="margin-top:12px"></div>
       </div>
 
-      <div><div id="rightCol"></div><div id="v4Box" style="margin-top:14px"></div>${dSum.has ? '<div id="debtBox" style="margin-top:14px"></div>' : ''}</div>
+      <div><div id="rightCol"></div></div>
     </div>
 
+    <!-- 투자 비교는 시뮬레이터 바로 아래에 둔다. 분석 카드 뒤에 두었더니
+         STEP 3 안에서 2,000px 넘게 내려가 있어 없는 줄 알고 지나쳤다. -->
     <div style="margin-top:20px">
       <div id="modelBox"></div>
       <div id="instrumentBox"></div>
+    </div>
+
+    <div class="grid2" style="margin-top:14px">
+      <div id="v4Box"></div>
+      ${dSum.has ? '<div id="debtBox"></div>' : ''}
+    </div>
+
+    <div style="margin-top:20px">
       <div class="mini" style="margin-bottom:8px">정책별 비교 · 실행할 하나를 확정하세요</div>
       <div id="cmp" class="grid2"></div>
       <div id="companion"></div>
