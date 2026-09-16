@@ -206,7 +206,10 @@ async function afterAuth() {
   catch (e) { /* 사생활 모드 */ }
   const goal = await getActiveGoal();
   if (back && goal) { location.href = back; return; }
-  location.href = goal ? './app.html#dashboard' : './index.html';
+  /* 로그인하면 숲으로 보낸다. 목표가 있으면 그 숲은 '댐이 완성된' 모습이고,
+     거기서 포리를 누르면 대시보드로 간다.
+     대시보드로 바로 보내면 목표를 정한 결과가 화면에 드러나지 않는다. */
+  location.href = './index.html';
 }
 
 /* --------- 로그인 --------- */

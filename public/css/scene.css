@@ -316,6 +316,9 @@ body.show-map .label{opacity:1;transform:translateY(0)}
    배경 그림에서는 지워 두고 여기서만 그린다. 그래야 갈아끼울 수 있다.
    핫스팟(z 10)보다 아래, 배경(z auto)보다 위. 비버(z 12)는 댐 위에 앉는다. */
 .scenery{position:absolute;inset:0;pointer-events:none;z-index:5}
+/* 속이 찬 덩어리를 댐 뒤에 깐다. 나뭇가지 사이 틈으로 뒤(지워둔 물가)가
+   비쳐 보이면 댐이 아니라 얼기설기한 그물처럼 읽힌다. */
+.scenery .dam.back{filter:none;opacity:.96}
 .scenery .dam{position:absolute;display:block;
   /* 그림자가 없으면 공중에 뜬 스티커로 보인다.
      drop-shadow 는 실루엣을 따라가므로 잔가지 결까지 살아난다. */
