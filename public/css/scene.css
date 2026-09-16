@@ -367,8 +367,10 @@ body[data-goal="y"] .fauna .f-bvr3{left:13.12%;top:41.88%;width:4.77%;height:6.5
   /* 그림에 '로그인 / 회원가입' 이 그려져 있다. 로그인한 사람에게는 그 위를
      덮어야 하므로, 칩 두 개를 그려진 버튼 두 개와 같은 자리·같은 크기로 편다.
      좁게 두면 뒤에 그려진 '로그인' 이 옆으로 비어져 나온다. */
-  position:absolute;z-index:24;left:81.3%;top:1.5%;width:17.9%;height:7.5%;
-  display:none;align-items:stretch;gap:1.2%
+  position:absolute;z-index:24;left:81.0%;top:1.4%;width:18.7%;height:7.8%;
+  /* 칩 사이에 틈을 두면 안 된다 — 그 틈으로 그려진 '회원가입' 의 흰
+     가장자리가 비친다. 둘을 맞붙여 하나의 알약으로 덮는다. */
+  display:none;align-items:stretch;gap:0
 }
 body[data-auth="in"] .me{display:flex}
 body[data-auth="in"] .h-login,
@@ -377,14 +379,17 @@ body[data-auth="in"] .t-login,
 body[data-auth="in"] .t-signup{display:none}
 .me .nm,
 .me button{
-  flex:1;display:grid;place-items:center;border-radius:999px;
+  flex:1;display:grid;place-items:center;
   font-family:inherit;font-size:clamp(9px,.9vw,13px);font-weight:800;
   white-space:nowrap;letter-spacing:-.02em;
   box-shadow:0 6px 18px rgba(0,0,0,.22)
 }
-.me .nm{background:#fff;color:var(--ink)}
-.me button{background:rgba(20,35,18,.94);color:#fff;border:0;cursor:pointer;transition:.14s}
-.me button:hover{background:#101d0e}
+/* 둘이 붙어 하나의 알약이 된다 */
+.me .nm   {border-radius:999px 0 0 999px;background:#fff;color:var(--ink)}
+/* 반투명이면 아래 흰 버튼이 비쳐 올라온다 — 불투명해야 한다 */
+.me button{border-radius:0 999px 999px 0;background:#16250F;color:#fff;
+  border:0;cursor:pointer;transition:.14s}
+.me button:hover{background:#0B1606}
 
 /* ───────────────────────── 도구 · 안내 ───────────────────────── */
 .tools{position:absolute;left:20px;top:20px;z-index:30;display:flex;gap:9px}
