@@ -43,6 +43,14 @@
       <button class="hotspot h-dam" data-key="dam" aria-label="실행 로드맵으로 이동"></button>
       <div class="label t-dam">실행 로드맵 · STEP 5</div>
 
+      <!-- 댐은 상태에 따라 바뀐다. 목표가 정해지면 나뭇가지 더미가 댐이 된다.
+           배경 그림에서는 지워져 있고 여기서만 그린다.
+           .h-dam 뒤에 있어야 형제 선택자(~)로 호버를 받는다. -->
+      <div class="scenery" aria-hidden="true">
+        <img class="dam dam-branch" src="./img/dam_branch.png" alt="">
+        <img class="dam dam-built"  src="./img/dam_built.png"  alt="">
+      </div>
+
 
       <!-- ── 물웅덩이 → 기능 설명 ──────────────────────────── -->
       <button class="hotspot h-puddle" data-key="puddle" aria-label="기능 설명 보기"></button>
@@ -75,12 +83,9 @@
            비버 셋과 포리는 배경에서 지워져 있어 자유롭게 움직일 수 있고,
            강아지는 제자리에 겹쳐 두어 커지기만 한다(원본을 늘 덮는다). -->
       <div class="fauna" aria-hidden="true">
-        <img class="f f-bvr1" src="./img/bvr1.png" alt=""
-             style="left:14.74%;top:42.00%;width:4.04%;height:6.76%">
-        <img class="f f-bvr2" src="./img/bvr2.png" alt=""
-             style="left:23.49%;top:45.43%;width:4.04%;height:6.03%">
-        <img class="f f-bvr3" src="./img/bvr3.png" alt=""
-             style="left:28.50%;top:54.26%;width:4.77%;height:6.55%">
+        <img class="f f-bvr1" src="./img/bvr1.png" alt="">
+        <img class="f f-bvr2" src="./img/bvr2.png" alt="">
+        <img class="f f-bvr3" src="./img/bvr3.png" alt="">
         <img class="f f-dog" src="./img/dog.png" alt=""
              style="left:41.22%;top:68.09%;width:6.85%;height:11.95%">
         <img class="f f-pori" src="./img/pori.png" alt=""
