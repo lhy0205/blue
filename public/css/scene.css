@@ -325,7 +325,7 @@ body.show-map .label{opacity:1;transform:translateY(0)}
   filter:drop-shadow(0 5px 6px rgba(24,38,22,.42)) drop-shadow(0 1px 1px rgba(24,38,22,.3))}
 .scenery .dam-branch{left:-6.50%;top:41.58%;width:35.96%;height:26.40%}
 .scenery .dam-built {left:-6.50%;top:43.76%;width:27.95%;height:24.22%}
-body[data-goal="y"] .dam-branch{display:none}
+body[data-goal="y"]:not([data-dam="over"]) .dam-branch{display:none}
 body:not([data-goal="y"]) .dam-built{display:none}
 
 /* 댐 실루엣도 상태마다 다르다 */
@@ -342,7 +342,7 @@ body:not([data-goal="y"]) .dam-built{display:none}
          45.63%, 11.38% 46.57%, 9.79% 44.80%, 8.99% 45.22%, 8.75% 43.87%, 7.95% 45.63%, 6.36%
          44.39%, 5.38% 46.47%, 3.91% 44.49%, 3.18% 45.84%, 3.00% 44.39%, 2.26% 45.01%, 1.22%
          43.45%)}
-body[data-goal="y"] .h-dam{clip-path:polygon(0.00% 44.18%, 0.00% 67.88%, 3.30% 67.88%, 4.89% 66.84%, 8.93% 66.32%, 10.09% 65.59%,
+body[data-goal="y"]:not([data-dam="over"]) .h-dam{clip-path:polygon(0.00% 44.18%, 0.00% 67.88%, 3.30% 67.88%, 4.89% 66.84%, 8.93% 66.32%, 10.09% 65.59%,
          21.41% 62.99%, 17.06% 52.91%, 17.31% 48.65%)}
 
 /* 댐은 배경 그림에 없으므로 호버 강조를 이 레이어에 건다 */
@@ -356,9 +356,9 @@ body[data-goal="y"] .h-dam{clip-path:polygon(0.00% 44.18%, 0.00% 67.88%, 3.30% 6
 .fauna .f-bvr1{left:1.98%;top:39.08%;width:4.04%;height:6.76%}
 .fauna .f-bvr2{left:10.98%;top:40.50%;width:4.04%;height:6.03%}
 .fauna .f-bvr3{left:18.62%;top:44.19%;width:4.77%;height:6.55%}
-body[data-goal="y"] .fauna .f-bvr1{left:-0.02%;top:38.26%;width:4.04%;height:6.76%}
-body[data-goal="y"] .fauna .f-bvr2{left:6.48%;top:40.58%;width:4.04%;height:6.03%}
-body[data-goal="y"] .fauna .f-bvr3{left:13.12%;top:41.88%;width:4.77%;height:6.55%}
+body[data-goal="y"]:not([data-dam="over"]) .fauna .f-bvr1{left:-0.02%;top:38.26%;width:4.04%;height:6.76%}
+body[data-goal="y"]:not([data-dam="over"]) .fauna .f-bvr2{left:6.48%;top:40.58%;width:4.04%;height:6.03%}
+body[data-goal="y"]:not([data-dam="over"]) .fauna .f-bvr3{left:13.12%;top:41.88%;width:4.77%;height:6.55%}
 
 /* ───────────────────── 로그인 상태 덮개 ─────────────────────
    그림에 '로그인 / 회원가입'이 그려져 있다. 로그인한 사람에게는
@@ -485,6 +485,204 @@ body[data-goal="y"] .hint{display:none}
 }
 @media (min-width:861px){ .menu{display:none} .scroller{overflow:visible} }
 
+
+/* ══════════════════════════════════════════════════════════════════
+ * 댐 붕괴 — 이번 달 유동지출이 유동예산을 넘었을 때
+ *
+ * 쌓아올린 콘크리트가 먼저 갈라져 떨어지고, 그 아래에서 원래의
+ * 나뭇가지 댐이 드러난다. 그리고 틈으로 물이 터진다.
+ * 무너진 뒤에도 그 상태로 머문다 — 지출을 줄이면 다시 콘크리트가 선다.
+ * body[data-dam="over"] 는 index.html 이 켠다.
+ * ═══════════════════════════════════════════════════════════════ */
+
+/* 조각과 물은 평소엔 아예 없다 */
+.scenery .shard,
+.scenery .burst,
+.scenery .spray,
+.damwarn{display:none}
+
+body[data-dam="over"] .scenery .shard,
+body[data-dam="over"] .scenery .burst,
+body[data-dam="over"] .scenery .spray,
+body[data-dam="over"] .damwarn{display:block}
+
+/* ── 1단계 · 흔들림 (0 → .55s) ─────────────────────────────────── */
+@keyframes damShake{
+  0%  {transform:translate(0,0) rotate(0deg)}
+  18% {transform:translate(-.5%,0)   rotate(-.35deg)}
+  36% {transform:translate(.6%,.1%)  rotate(.40deg)}
+  54% {transform:translate(-.7%,.3%) rotate(-.50deg)}
+  72% {transform:translate(.8%,.5%)  rotate(.55deg)}
+  88% {transform:translate(-.6%,.9%) rotate(-.60deg)}
+  100%{transform:translate(0,1.3%)   rotate(0deg)}
+}
+@keyframes damGone{to{opacity:0}}
+
+body[data-dam="over"] .scenery .dam-built:not(.shard){
+  animation:damShake .55s ease-in-out both, damGone .04s linear .55s forwards
+}
+
+/* ── 2단계 · 세 조각으로 갈라져 떨어진다 (.55s → 1.5s) ──────────── */
+/* clip-path 의 % 는 이미지 상자 기준이라, 같은 그림 세 장을 서로 다르게
+   잘라 겹치면 조각 PNG 를 따로 만들 필요가 없다. */
+.scenery .shard{transform-origin:50% 92%}
+.scenery .s1{clip-path:polygon(0 0, 34% 0, 30% 22%, 38% 46%, 31% 72%, 36% 100%, 0 100%)}
+.scenery .s2{clip-path:polygon(34% 0, 68% 0, 72% 26%, 64% 52%, 71% 78%, 66% 100%, 36% 100%, 31% 72%, 38% 46%, 30% 22%)}
+.scenery .s3{clip-path:polygon(68% 0, 100% 0, 100% 100%, 66% 100%, 71% 78%, 64% 52%, 72% 26%)}
+
+@keyframes shardL{
+  0%  {opacity:0; transform:translate(0,0) rotate(0deg)}
+  6%  {opacity:1}
+  70% {opacity:1}
+  100%{opacity:0; transform:translate(-7%,27%) rotate(-26deg)}
+}
+@keyframes shardM{
+  0%  {opacity:0; transform:translate(0,0) rotate(0deg)}
+  6%  {opacity:1}
+  70% {opacity:1}
+  100%{opacity:0; transform:translate(-1%,33%) rotate(7deg)}
+}
+@keyframes shardR{
+  0%  {opacity:0; transform:translate(0,0) rotate(0deg)}
+  6%  {opacity:1}
+  70% {opacity:1}
+  100%{opacity:0; transform:translate(8%,29%) rotate(23deg)}
+}
+body[data-dam="over"] .scenery .s1{animation:shardL .88s cubic-bezier(.40,.05,.75,.60) .55s both}
+body[data-dam="over"] .scenery .s2{animation:shardM .96s cubic-bezier(.40,.05,.75,.60) .60s both}
+body[data-dam="over"] .scenery .s3{animation:shardR .92s cubic-bezier(.40,.05,.75,.60) .58s both}
+
+/* ── 3단계 · 나뭇가지 댐이 다시 드러난다 (.75s →) ──────────────── */
+@keyframes branchBack     {0%{opacity:0;transform:translateY(1.4%) scale(.985)} 100%{opacity:1;transform:none}}
+@keyframes branchBackSolid{0%{opacity:0;transform:translateY(1.4%) scale(.985)} 100%{opacity:.96;transform:none}}
+body[data-goal="y"][data-dam="over"] .dam-branch{animation:branchBack .70s ease-out .75s both}
+body[data-goal="y"][data-dam="over"] .dam.back.dam-branch{animation:branchBackSolid .70s ease-out .75s both}
+
+/* ── 4단계 · 물이 터진다 (1.0s →, 이후 계속 흐른다) ────────────── */
+/* 댐 틈에서 오른쪽 아래 웅덩이 쪽으로 번지는 물줄기.
+   한 덩어리를 clip-path 로 부채꼴로 자르고, 그 안에서 결만 흘린다. */
+/* 물 모양은 PNG 마스크로 잡는다.
+   CSS 그라데이션 마스크는 이 장면의 합성 경로에서 엉뚱한 자리를 밝히고
+   상자 모서리에서 끊겨 유리판처럼 보였다. 잎사귀 빛(.leafshine)과 같은
+   방식 — 가장자리가 0 인 PNG 한 장 — 이 확실하다. */
+.scenery .burst{
+  position:absolute;left:14.0%;top:52.0%;width:46.0%;height:44.0%;
+  opacity:0;overflow:hidden;
+  -webkit-mask-image:url(../img/flood.png);
+  -webkit-mask-size:100% 100%;
+  -webkit-mask-repeat:no-repeat;
+  mask-image:url(../img/flood.png);
+  mask-size:100% 100%;
+  mask-repeat:no-repeat;
+  animation:burstIn .9s ease-out 1.0s both
+}
+@keyframes burstIn{0%{opacity:0}100%{opacity:.88}}
+
+.scenery .burst i{position:absolute;inset:0;display:block}
+
+/* 물빛 — 아래로 갈수록 옅어진다 */
+.scenery .burst i:nth-child(1){
+  background:linear-gradient(150deg,
+    rgba(54,120,186,.95) 0%, rgba(110,175,224,.88) 44%, rgba(176,216,244,.72) 100%)
+}
+
+/* 물결 — 직선 줄무늬는 빛줄기로 읽힌다. 흐름 방향으로 문질러 구운
+   이음매 없는 텍스처를 두 겹, 서로 다른 크기와 속도로 흘린다. */
+.scenery .burst i:nth-child(2){
+  background:url(../img/watertex.png) repeat;
+  background-size:30% auto;
+  opacity:.85;
+  animation:flowA 2.4s linear infinite
+}
+.scenery .burst i:nth-child(3){
+  background:url(../img/watertex.png) repeat;
+  background-size:52% auto;
+  opacity:.5;
+  animation:flowB 4.3s linear infinite -1.4s
+}
+@keyframes flowA{from{background-position:0 0} to{background-position:30% 19.5%}}
+@keyframes flowB{from{background-position:0 0} to{background-position:52% 33.8%}}
+
+/* 포말선 — 물이 잔디와 만나는 경계. 이게 없으면 물이 안개로 읽힌다 */
+.scenery .burst i:nth-child(4){
+  -webkit-mask-image:url(../img/foam.png);-webkit-mask-size:100% 100%;-webkit-mask-repeat:no-repeat;
+  mask-image:url(../img/foam.png);mask-size:100% 100%;mask-repeat:no-repeat;
+  background:rgba(255,255,255,.62);
+  animation:foamBreathe 2.6s ease-in-out infinite
+}
+@keyframes foamBreathe{0%,100%{opacity:.72} 50%{opacity:1}}
+
+/* 터지는 자리의 물보라 */
+.scenery .spray{
+  position:absolute;left:13.2%;top:50.2%;width:12.0%;height:13.0%;
+  background:radial-gradient(ellipse at 32% 42%,
+    rgba(255,255,255,.62) 0%, rgba(255,255,255,.24) 38%, rgba(255,255,255,0) 72%);
+  opacity:0;
+  animation:sprayIn .5s ease-out 1.0s both, sprayPulse 1.4s ease-in-out 1.5s infinite
+}
+@keyframes sprayIn   {0%{opacity:0;transform:scale(.7)} 100%{opacity:.9;transform:none}}
+@keyframes sprayPulse{0%,100%{opacity:.62;transform:scale(1)} 50%{opacity:.95;transform:scale(1.09)}}
+
+/* ── 5단계 · 포리와 비버가 놀란다 ──────────────────────────────── */
+@keyframes poriStartle{
+  0%  {transform:translateY(0) rotate(0deg) scale(1)}
+  12% {transform:translateY(-4.0%) rotate(-5deg) scale(1.04)}
+  30% {transform:translateY(-1.0%) rotate(4deg)  scale(.99)}
+  50% {transform:translateY(-2.5%) rotate(-3deg) scale(1.02)}
+  72% {transform:translateY(-.4%)  rotate(1.5deg) scale(1)}
+  100%{transform:none}
+}
+@keyframes bvrJolt{
+  0%  {transform:translateY(0) rotate(0deg)}
+  16% {transform:translateY(-6.0%) rotate(-7deg)}
+  40% {transform:translateY(-2.0%) rotate(5deg)}
+  66% {transform:translateY(-3.5%) rotate(-3deg)}
+  100%{transform:none}
+}
+body[data-dam="over"] .fauna .f-pori{
+  animation:poriStartle 1.1s ease-out .55s 1 both, poriIdle 5.6s ease-in-out 1.75s infinite
+}
+body[data-dam="over"] .fauna .f-bvr1{
+  animation:bvrJolt .90s ease-out .55s 1 both, bvrIdle 4.1s ease-in-out 1.55s infinite
+}
+body[data-dam="over"] .fauna .f-bvr2{
+  animation:bvrJolt .90s ease-out .62s 1 both, bvrIdle 5.3s ease-in-out 1.62s infinite
+}
+body[data-dam="over"] .fauna .f-bvr3{
+  animation:bvrJolt .90s ease-out .58s 1 both, bvrIdle 4.7s ease-in-out 1.58s infinite
+}
+
+/* ── 왜 무너졌는지 한 줄 ───────────────────────────────────────── */
+.damwarn{
+  position:absolute;z-index:22;left:17.0%;top:61.5%;max-width:25%;
+  padding:11px 15px;border-radius:15px;
+  background:rgba(255,255,255,.95);color:#4B2A16;
+  font-size:13px;line-height:1.5;font-weight:700;letter-spacing:-.2px;
+  filter:drop-shadow(0 6px 16px rgba(24,38,22,.30));
+  animation:warnIn .5s ease-out 1.25s both
+}
+.damwarn b{color:#C9553F}
+.damwarn::after{
+  content:"";position:absolute;left:24px;top:-9px;width:0;height:0;
+  border:9px solid transparent;border-top:0;border-bottom-color:rgba(255,255,255,.95)
+}
+@keyframes warnIn{0%{opacity:0;transform:translateY(7px)} 100%{opacity:1;transform:none}}
+
+@media (max-width:860px){
+  .damwarn{max-width:40%;font-size:12px;left:16.0%;top:58.0%}
+}
+
 @media (prefers-reduced-motion:reduce){
   *,*:before,*:after{transition-duration:.001ms!important;animation:none!important}
 }
+
+/* 애니메이션을 끈 사람에게도 결과는 보여야 한다 — 무너진 뒤의 정지화면 */
+@media (prefers-reduced-motion:reduce){
+  body[data-dam="over"] .scenery .shard{display:none}
+  body[data-dam="over"] .scenery .dam-built:not(.shard){opacity:0}
+  body[data-dam="over"] .scenery .burst{opacity:.92}
+  body[data-dam="over"] .scenery .spray{opacity:.9}
+  body[data-goal="y"][data-dam="over"] .dam-branch{opacity:1}
+  body[data-dam="over"] .damwarn{opacity:1}
+}
+

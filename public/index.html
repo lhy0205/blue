@@ -51,7 +51,19 @@
         <img class="dam      dam-branch" src="./img/dam_branch.png"      alt="">
         <img class="dam back dam-built"  src="./img/dam_built_back.png"  alt="">
         <img class="dam      dam-built"  src="./img/dam_built.png"       alt="">
+
+        <!-- 무너질 때만 쓰는 조각. 같은 그림을 clip-path 로 셋으로 갈라 쓴다 -->
+        <img class="dam dam-built shard s1" src="./img/dam_built.png" alt="">
+        <img class="dam dam-built shard s2" src="./img/dam_built.png" alt="">
+        <img class="dam dam-built shard s3" src="./img/dam_built.png" alt="">
+
+        <!-- 터진 물 -->
+        <div class="burst"><i></i><i></i><i></i><i></i></div>
+        <div class="spray"></div>
       </div>
+
+      <!-- 왜 무너졌는지 — 그림만 바뀌고 이유가 없으면 고장으로 읽힌다 -->
+      <div class="damwarn" id="damWarn" role="status"></div>
 
 
       <!-- ── 물웅덩이 → 기능 설명 ──────────────────────────── -->
@@ -161,7 +173,7 @@
 
 <script type="module" src="./js/scene.js"></script>
 <script type="module">
-import { initStore, currentUser, getActiveGoal, getProfile, createGoal, signOut, aiEnabled, saveProfile } from './js/store.js';
+import { initStore, currentUser, getActiveGoal, getProfile, createGoal, signOut, aiEnabled, saveProfile, getTransactions } from './js/store.js';
 import { parseGoal, enhanceWithAI, GOAL_LABEL } from './js/goalparse.js';
 import { DEBT_LABEL } from './js/calc.js';
 
@@ -184,6 +196,31 @@ let currentGoal = null;
 if (user) currentGoal = await getActiveGoal();
 document.body.dataset.goal = currentGoal ? 'y' : 'n';
 if (wantsNew) { const d = document.getElementById('goalDlg'); if (d) d.hidden = false; }
+
+/* 이번 달 유동지출이 유동예산을 넘으면 댐이 무너진다.
+   지출을 줄여 예산 안으로 돌아오면 다음 방문 때 콘크리트 댐이 다시 서 있다.
+   결제내역이 없으면 판정하지 않는다 — 안 쓴 것과 모르는 것은 다르다. */
+if (currentGoal && currentGoal.flexible_budget > 0) {
+  try {
+    const txs = await getTransactions();
+    const now = new Date();
+    const thisMonth = now.getFullYear() * 12 + now.getMonth();
+    const spent = txs.reduce((sum, t) => {
+      const d = new Date(t.occurred_at);
+      return (d.getFullYear() * 12 + d.getMonth() === thisMonth) ? sum + (t.amount || 0) : sum;
+    }, 0);
+    const over = spent - currentGoal.flexible_budget;
+    if (over > 0) {
+      document.body.dataset.dam = 'over';
+      const w = document.getElementById('damWarn');
+      if (w) {
+        const won = (n) => Math.round(n).toLocaleString('ko-KR') + '원';
+        w.innerHTML = '이번 달 지출이 유동예산을 <b>' + won(over) + '</b> 넘었어요.<br>'
+                    + '댐이 버티지 못했어요 — 실행 센터에서 확인해요.';
+      }
+    }
+  } catch (e) { /* 결제내역을 못 읽으면 댐은 그대로 둔다 */ }
+}
 
 /* 목표를 바꾸러 들어온 경우, 기존 목표가 어떻게 되는지 미리 알려준다.
    createGoal() 은 새 목표를 만들면서 기존 목표를 archived 로 돌린다.
