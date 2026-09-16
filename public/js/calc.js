@@ -27,19 +27,25 @@ export function buildBlueprint(goal, appliedPolicies) {
   const policyBenefit = sum('policy_benefit'); // 정책혜택 예상액 (지원금)
   const govMatch      = sum('future_fund');    // 정부기여금 등 미래 예상자금
 
-  const target       = goal.target_amount;
-  const currentAsset = goal.current_asset || 0;
+    const target       = goal.target_amount;
+    /* V4 keeps the emergency reserve outside the housing goal. Older goals only
+      have current_asset, so retain that behavior when the split is absent. */
+    const currentAsset = goal.goal_cash != null ? goal.goal_cash : (goal.current_asset || 0);
 
   /* 필요 자기자본 = 목표 - 정책대출 - 정책혜택 */
-  const requiredEquity = Math.max(0, target - policyLoan - policyBenefit);
+  const goalCosts = goal.costs || 0;
+  const requiredEquity = Math.max(0, target + goalCosts - policyLoan - policyBenefit);
   /* 추가로 모아야 하는 금액 = 필요 자기자본 - 현재자산 - 정부기여금 */
   const additionalNeeded = Math.max(0, requiredEquity - currentAsset - govMatch);
 
   const months = goal.target_months || 1;
-  const recommendedMonthly = Math.round(additionalNeeded / months / 1000) * 1000;
+  const monthlyUnit = goal.costs != null ? 10000 : 1000;
+  const recommendedMonthly = goal.costs != null
+    ? Math.ceil(additionalNeeded / months / monthlyUnit) * monthlyUnit
+    : Math.round(additionalNeeded / months / monthlyUnit) * monthlyUnit;
 
   /* 부대비용 (주택 구입 목표에만) */
-  const acquisitionCost = goal.goal_type === 'purchase'
+  const acquisitionCost = goal.costs != null ? goalCosts : goal.goal_type === 'purchase'
     ? Math.round(target * ACQUISITION_COST_RATE) : 0;
 
   return {
@@ -54,13 +60,166 @@ export function buildBlueprint(goal, appliedPolicies) {
       { key: 'future',   label: '미래 예상자금',         value: additionalNeeded + govMatch, status: '저축 예정', tone: 'navy' },
     ],
     formula: {
-      requiredEquity: `목표 ${money(target)} − 정책대출 ${money(policyLoan)}` +
+      requiredEquity: `목표 ${money(target)}${goalCosts ? ` + 부대비용 ${money(goalCosts)}` : ''} − 정책대출 ${money(policyLoan)}` +
         (policyBenefit ? ` − 정책혜택 ${money(policyBenefit)}` : '') + ` = ${money(requiredEquity)}`,
       additionalNeeded: `필요 자기자본 ${money(requiredEquity)} − 보유 ${money(currentAsset)}` +
         (govMatch ? ` − 정부기여금 ${money(govMatch)}` : '') + ` = ${money(additionalNeeded)}`,
       monthly: `${money(additionalNeeded)} ÷ ${months}개월 ≈ 월 ${money(recommendedMonthly)}`,
     },
   };
+}
+
+/* ---------------------------------------------------------------------------
+ * V4 monthly scenario engine. Contributions are made at month end and the
+ * defensive glide path is applied at the start of months 19 and 22.
+ * ------------------------------------------------------------------------- */
+export const SYNTHETIC_V4 = Object.freeze({
+  STRESS: { stock: -0.25, bond: -0.06, cash: 0 },
+  BASE: { stock: 0.06, bond: 0.03, cash: 0 },
+  GOOD: { stock: 0.15, bond: 0.06, cash: 0 },
+});
+
+const V4_MODELS = Object.freeze({
+  DEFENSIVE: { stock: 0.10, bond: 0.55, cash: 0.35 },
+  BALANCED: { stock: 0.40, bond: 0.40, cash: 0.20 },
+  GROWTH: { stock: 0.75, bond: 0.15, cash: 0.10 },
+  CASH: { stock: 0, bond: 0, cash: 1 },
+});
+
+export const MODEL_ALLOCATIONS = Object.freeze({
+  DEFENSIVE: { label: '방어형', stock: 0.10, bond: 0.55, cash: 0.35 },
+  BALANCED: { label: '균형형', stock: 0.40, bond: 0.40, cash: 0.20 },
+  GROWTH: { label: '성장형', stock: 0.75, bond: 0.15, cash: 0.10 },
+  CASH: { label: '현금 보유 기준선', stock: 0, bond: 0, cash: 1 },
+});
+
+/* PDF V4 goal suitability rules. This is an application guard, not investment advice. */
+export function evaluateModelApplication({
+  goalType = 'other', months = 0, model = 'DEFENSIVE',
+  riskTolerance = 'unknown', riskCapacity = 'unknown', emergencyFundReady = false,
+} = {}) {
+  const isHousing = goalType === 'jeonse' || goalType === 'purchase' || goalType === 'HOUSING_DEPOSIT';
+  const shortTermHousing = isHousing && months < 36;
+  const lowerRisk = ['low', 'unknown'].includes(riskTolerance) || ['low', 'unknown'].includes(riskCapacity);
+  const reasons = [];
+  let applicable = true;
+  let maxStock = 1;
+
+  if (model === 'CASH') reasons.push('현금 보유 기준선은 투자 손익 0% 비교용입니다.');
+  if (shortTermHousing) {
+    maxStock = 0.10;
+    if (model === 'BALANCED' || model === 'GROWTH') {
+      applicable = false;
+      reasons.push('36개월 미만 필수 주거자금에는 균형형·성장형을 적용하지 않습니다.');
+    }
+    if (model === 'DEFENSIVE') reasons.push('주식 비중은 최대 10% 규칙을 적용합니다.');
+  }
+  if (model === 'BALANCED') {
+    if (months < 36 || lowerRisk || !emergencyFundReady) {
+      applicable = false;
+      if (months >= 36) reasons.push('비상금과 위험 감내 수준을 확인해야 합니다.');
+    }
+  }
+  if (model === 'GROWTH') {
+    if (months < 60 || lowerRisk || !emergencyFundReady) {
+      applicable = false;
+      reasons.push('성장형은 60개월 이상, 높은 위험 감내도, 비상금 확보가 모두 필요합니다.');
+    }
+  }
+  if (riskTolerance === 'none' || riskCapacity === 'none') {
+    applicable = false;
+    reasons.push('원금 손실을 허용하지 않으면 현금 보유 기준선을 제시합니다.');
+  }
+  return {
+    model, applicable, maxStock,
+    allocation: MODEL_ALLOCATIONS[model] || null,
+    reasons: reasons.length ? reasons : ['현재 입력 기준으로 적용 가능한 비교 모델입니다.'],
+  };
+}
+
+function v4Weights(model, month, glidePath) {
+  if (model !== 'DEFENSIVE' || !glidePath) return V4_MODELS[model] || V4_MODELS.DEFENSIVE;
+  if (month >= 22) return V4_MODELS.CASH;
+  if (month >= 19) return { stock: 0, bond: 0.25, cash: 0.75 };
+  return V4_MODELS.DEFENSIVE;
+}
+
+export function simulateV4({
+  initialCash = 0, contribution = 0, months = 24, requiredEquity = 0,
+  model = 'DEFENSIVE', scenario = 'BASE', assumptionSet = 'SYNTHETIC_V4',
+  glidePath = true,
+} = {}) {
+  if (assumptionSet !== 'SYNTHETIC_V4' || !SYNTHETIC_V4[scenario]) {
+    throw new Error(`지원하지 않는 가정 세트 또는 시나리오: ${assumptionSet}/${scenario}`);
+  }
+  const annual = SYNTHETIC_V4[scenario];
+  let value = initialCash;
+  const monthly = [];
+  for (let month = 1; month <= months; month += 1) {
+    const weights = v4Weights(model, month, glidePath);
+    const assetMonth = (key) => Math.pow(1 + annual[key], 1 / 12) - 1;
+    const portfolioMonth = weights.stock * assetMonth('stock')
+      + weights.bond * assetMonth('bond') + weights.cash * assetMonth('cash');
+    value = value * (1 + portfolioMonth) + contribution;
+    monthly.push({ month, value, contribution, weights: { ...weights }, portfolioMonth });
+  }
+  const rounded = Math.round(value);
+  return {
+    assumptionSet, scenario, model, glidePath, initialCash, contribution, months,
+    goalAssets: rounded,
+    shortfall: Math.max(requiredEquity - rounded, 0),
+    surplus: Math.max(rounded - requiredEquity, 0),
+    returnComponent: Math.round(value - initialCash - contribution * months),
+    monthly,
+  };
+}
+
+export function simulateV4Scenarios(input = {}) {
+  return Object.fromEntries(Object.keys(SYNTHETIC_V4).map((scenario) => [
+    scenario, simulateV4({ ...input, scenario }),
+  ]));
+}
+
+export function compareV4Models(input = {}) {
+  return Object.fromEntries(Object.keys(MODEL_ALLOCATIONS).map((model) => {
+    const suitability = evaluateModelApplication({ ...input, model });
+    const scenarios = Object.fromEntries(Object.keys(SYNTHETIC_V4).map((scenario) => [
+      scenario,
+      simulateV4({ ...input, model, scenario, glidePath: model === 'DEFENSIVE' }),
+    ]));
+    return [model, { ...suitability, scenarios }];
+  }));
+}
+
+/* Expected-return display uses model assumptions only; observed ETF metrics are
+   never treated as forecasts. Instruments without an approved assumption set
+   return null instead of inventing a future return. */
+export function projectInstrument(instrument, { initialCash = 0, contribution = 0, months = 0, scenario = 'BASE' } = {}) {
+  const annual = instrument && instrument.model_returns && instrument.model_returns[scenario];
+  if (annual == null || !Number.isFinite(months) || months < 0) {
+    return { available: false, reason: '검증된 상품별 가정이 없어 예상수익을 산정하지 않습니다.' };
+  }
+  let value = initialCash;
+  const monthly = Math.pow(1 + annual, 1 / 12) - 1;
+  for (let month = 0; month < months; month += 1) value = value * (1 + monthly) + contribution;
+  const goalAssets = Math.round(value);
+  return {
+    available: true, scenario, annualReturn: annual, goalAssets,
+    returnComponent: Math.round(value - initialCash - contribution * months),
+    formula: `월 수익률 = (1 + ${annual})^(1/12) - 1, 월말 납입 ${contribution.toLocaleString()}원`,
+  };
+}
+
+/* Internal market-interest score from the PDF: 60% net flow/AUM percentile
+   and 40% recent trading-value percentile. */
+export function marketInterestScore({ flowPercentile, volumePercentile, daysListed = 999, leveraged = false, inverse = false } = {}) {
+  if (daysListed < 25 || flowPercentile == null || volumePercentile == null) {
+    return { available: false, score: null, reason: daysListed < 25 ? '상장 25거래일 미만' : '순설정액 또는 거래대금 자료 누락' };
+  }
+  if (leveraged || inverse) return { available: false, score: null, reason: '레버리지·역방향 상품은 관심도 순위에서 제외' };
+  const clamp = (value) => Math.max(0, Math.min(100, Number(value)));
+  const score = Math.round(clamp(flowPercentile) * 0.6 + clamp(volumePercentile) * 0.4);
+  return { available: true, score, formula: '순설정액/AUM 백분위 × 0.6 + 최근 거래대금 백분위 × 0.4' };
 }
 
 /* ---------------------------------------------------------------------------
