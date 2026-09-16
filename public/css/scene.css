@@ -343,8 +343,10 @@ body[data-goal="y"]:not([data-dam="over"]) .h-dam{clip-path:polygon(0.00% 44.18%
 .me{
   /* 그림에 '로그인 / 회원가입' 이 그려져 있다. 로그인한 사람에게는 그 위를
      덮어야 하므로, 칩 두 개를 그려진 버튼 두 개와 같은 자리·같은 크기로 편다.
-     좁게 두면 뒤에 그려진 '로그인' 이 옆으로 비어져 나온다. */
-  position:absolute;z-index:24;left:81.0%;top:1.4%;width:18.7%;height:7.8%;
+     좁게 두면 뒤에 그려진 '로그인' 이 옆으로 비어져 나온다.
+     그려진 두 알약은 x 1345~1615 · y 26~72 (1635x962 기준)이다. 여기에 맞춰
+     좌우 3~4px, 위아래 2px 만 물리게 덮는다 — 더 키우면 로그인 전보다 커 보인다. */
+  position:absolute;z-index:24;left:82.05%;top:2.50%;width:16.95%;height:5.20%;
   /* 칩 사이에 틈을 두면 안 된다 — 그 틈으로 그려진 '회원가입' 의 흰
      가장자리가 비친다. 둘을 맞붙여 하나의 알약으로 덮는다. */
   display:none;align-items:stretch;gap:0
