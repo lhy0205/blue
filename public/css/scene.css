@@ -298,9 +298,11 @@ body.show-map .label{opacity:1;transform:translateY(0)}
    배경 그림에서는 지워 두고 여기서만 그린다. 그래야 갈아끼울 수 있다.
    핫스팟(z 10)보다 아래, 배경(z auto)보다 위. 비버(z 12)는 댐 위에 앉는다. */
 .scenery{position:absolute;inset:0;pointer-events:none;z-index:5}
-/* 물은 문(.doorfx, z 11)과 같은 층이다. DOM 에서 문 뒤에 써서 위로 올린다.
-   포리·강아지(.fauna, z 12)는 물 앞에 서야 하므로 그보다는 아래다. */
-.flood{position:absolute;inset:0;pointer-events:none;z-index:11}
+/* 물은 문(z 11)도 포리·강아지(.fauna, z 12)도 덮는다. 잠긴 장면이므로
+   살아 있는 것들도 물 아래에 있어야 말이 된다.
+   말풍선(z 22)과 계정 칩(z 24)은 UI 라 물 위에 남는다.
+   pointer-events:none 이라 물이 덮어도 아래 핫스팟은 그대로 눌린다. */
+.flood{position:absolute;inset:0;pointer-events:none;z-index:13}
 /* 속이 찬 덩어리를 댐 뒤에 깐다. 나뭇가지 사이 틈으로 뒤(지워둔 물가)가
    비쳐 보이면 댐이 아니라 얼기설기한 그물처럼 읽힌다. */
 .scenery .dam.back{filter:none;opacity:.96}
