@@ -58,9 +58,6 @@
         <img class="dam dam-built shard s2" src="./img/dam_built.png" alt="">
         <img class="dam dam-built shard s3" src="./img/dam_built.png" alt="">
 
-        <!-- 터진 물 -->
-        <div class="burst"><i></i><i></i><i></i><i></i></div>
-        <div class="spray"></div>
       </div>
 
       <!-- 왜 무너졌는지 — 그림만 바뀌고 이유가 없으면 고장으로 읽힌다 -->
@@ -97,6 +94,13 @@
       <!-- 살아 있는 것들. 배경 위에 얹혀 각자 다른 박자로 숨쉰다.
            포리는 배경에서 지워져 있어 자유롭게 움직일 수 있고,
            강아지는 제자리에 겹쳐 두어 커지기만 한다(원본을 늘 덮는다). -->
+      <!-- 터진 물 — 문보다 앞이다. 물이 문을 덮어야 '잠겼다'로 읽힌다.
+           .scenery(5) 에 두면 문(.doorfx 11) 뒤로 깔린다. -->
+      <div class="flood" aria-hidden="true">
+        <div class="burst"><i></i><i></i><i></i><i></i></div>
+        <div class="spray"></div>
+      </div>
+
       <div class="fauna" aria-hidden="true">
         <img class="f f-dog" src="./img/dog.png" alt=""
              style="left:41.22%;top:68.09%;width:6.85%;height:11.95%">
