@@ -97,6 +97,23 @@ document.querySelectorAll('.hotspot[data-key]').forEach((b) =>
 document.querySelectorAll('[data-spot]').forEach((b) =>
   b.addEventListener('click', (e) => { e.preventDefault(); go(b.dataset.spot); }));
 
+/* ====================== 그림 기준 글씨 크기 ==============================
+   로그인한 사람에게 보이는 칩은 그림에 그려진 버튼 위를 덮는다. 글씨가
+   뷰포트 기준이면 화면 크기에 따라 그려진 글씨보다 작아 보인다.
+   그림 폭을 CSS 에 넘겨 같은 자로 재게 한다. */
+const stageEl = document.querySelector('.stage');
+function syncStageWidth() {
+  if (!stageEl) return;
+  const w = stageEl.getBoundingClientRect().width;
+  if (w > 0) document.documentElement.style.setProperty('--stage-w', w + 'px');
+}
+syncStageWidth();
+addEventListener('resize', syncStageWidth);
+addEventListener('orientationchange', syncStageWidth);
+/* 배경이 늦게 뜨면 무대 폭이 그때 확정된다 */
+const bgImg = document.querySelector('.stage img');
+if (bgImg && !bgImg.complete) bgImg.addEventListener('load', syncStageWidth, { once: true });
+
 /* ============================== 도구 ====================================== */
 $('#toggleMap') && $('#toggleMap').addEventListener('click', () => {
   const on = document.body.classList.toggle('show-map');

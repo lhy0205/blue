@@ -359,7 +359,11 @@ body[data-auth="in"] .t-signup{display:none}
 .me .nm,
 .me button{
   flex:1;display:grid;place-items:center;
-  font-family:inherit;font-size:clamp(9px,.9vw,13px);font-weight:800;
+  font-family:inherit;font-weight:800;
+  /* 그림에 그려진 '로그인 / 회원가입' 글씨는 1635px 기준 약 20px 이다.
+     뷰포트(vw)에 맞추면 화면 크기에 따라 그림 글씨와 어긋난다 —
+     그림 폭(--stage-w, scene.js 가 넣는다)에 맞춰야 로그인 전후로 같아 보인다. */
+  font-size:clamp(9px, calc(var(--stage-w, 1200px) * 0.0122), 24px);
   white-space:nowrap;letter-spacing:-.02em;
   box-shadow:0 6px 18px rgba(0,0,0,.22)
 }
