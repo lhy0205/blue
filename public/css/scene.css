@@ -103,8 +103,6 @@ body.show-map .label{opacity:1;transform:translateY(0)}
    좌표는 전부 무대 기준 퍼센트다. */
 
 /* 알약 버튼 두 개는 그림에서도 알약이다 */
-.h-login  {clip-path:inset(2.4% 10.5% 92.4% 82.4% round 99px)}
-.h-signup {clip-path:inset(2.4% 1.8% 92.4% 90.2% round 99px)}
 
 /* 카피 블록 — 제목 두 줄 + 설명 두 줄. 설명이 더 짧아 ㄱ자다 */
 .h-copy   {clip-path:polygon(18.8% 19.5%, 44.5% 19.5%, 44.5% 32%, 36% 32%, 36% 41.5%, 18.8% 41.5%)}
@@ -145,7 +143,6 @@ body.show-map .label{opacity:1;transform:translateY(0)}
              47.61%, 57.19% 46.57%)}
 
 /* 이름표 — 각 모양의 위쪽 가운데 */
-.t-login {left:86%;   top:9%}     .t-signup{left:94%;   top:9%}
 .t-copy  {left:31.5%; top:14.5%}
 .t-dam   {left:9%;    top:41.5%}
 .t-puddle{left:31.7%; top:71.1%}
@@ -344,18 +341,42 @@ body[data-goal="y"]:not([data-dam="over"]) .h-dam{clip-path:polygon(0.00% 44.18%
   /* 그림에 '로그인 / 회원가입' 이 그려져 있다. 로그인한 사람에게는 그 위를
      덮어야 하므로, 칩 두 개를 그려진 버튼 두 개와 같은 자리·같은 크기로 편다.
      좁게 두면 뒤에 그려진 '로그인' 이 옆으로 비어져 나온다.
-     그려진 두 알약은 x 1345~1615 · y 26~72 (1635x962 기준)이다. 여기에 맞춰
-     좌우 3~4px, 위아래 2px 만 물리게 덮는다 — 더 키우면 로그인 전보다 커 보인다. */
-  position:absolute;z-index:24;left:82.05%;top:2.50%;width:16.95%;height:5.20%;
+     이제는 그림에 버튼이 없다. 로그인 전(.auth)과 후(.me)가 같은 상자를
+     쓰므로 두 상태의 크기와 자리가 정확히 같다. */
+  position:absolute;z-index:24;left:82.26%;top:2.70%;width:16.51%;height:4.78%;
   /* 칩 사이에 틈을 두면 안 된다 — 그 틈으로 그려진 '회원가입' 의 흰
      가장자리가 비친다. 둘을 맞붙여 하나의 알약으로 덮는다. */
   display:none;align-items:stretch;gap:0
 }
 body[data-auth="in"] .me{display:flex}
-body[data-auth="in"] .h-login,
-body[data-auth="in"] .h-signup,
-body[data-auth="in"] .t-login,
-body[data-auth="in"] .t-signup{display:none}
+
+/* 로그인 전 — 그림에 그려 넣던 두 알약을 진짜 버튼으로 그린다.
+   .me 와 같은 상자·같은 글씨 크기라 로그인 전후로 어긋나지 않는다.
+   가로 비율은 원래 그림과 같게 뒀다 (121 : 136, 사이 13px). */
+.auth{
+  position:absolute;z-index:24;left:82.26%;top:2.70%;width:16.51%;height:4.78%;
+  display:flex;align-items:stretch;gap:4.81%
+}
+body[data-auth="in"] .auth{display:none}
+.auth .ab{
+  display:grid;place-items:center;border-radius:999px;text-decoration:none;
+  font-family:inherit;font-weight:800;letter-spacing:-.02em;white-space:nowrap;
+  font-size:clamp(9px, calc(var(--stage-w, 1200px) * 0.0122), 24px);
+  transition:transform .16s ease, background .16s ease, box-shadow .16s ease
+}
+.auth .ghost{
+  flex:121;color:#FAF6EC;border:2px solid rgba(250,246,236,.92);
+  text-shadow:0 1px 3px rgba(20,26,16,.45)
+}
+.auth .solid{
+  flex:136;color:#2A2A2A;background:#FCFAF4;
+  box-shadow:0 6px 18px rgba(0,0,0,.22)
+}
+.auth .ab:hover,.auth .ab:focus-visible{transform:translateY(-1px);outline:none}
+.auth .ghost:hover,.auth .ghost:focus-visible{background:rgba(250,246,236,.16)}
+.auth .solid:hover,.auth .solid:focus-visible{background:#fff;box-shadow:0 8px 22px rgba(0,0,0,.28)}
+
+body[data-auth="in"] .auth{display:none}
 .me .nm,
 .me button{
   flex:1;display:grid;place-items:center;

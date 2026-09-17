@@ -26,11 +26,12 @@
       </picture>
 
       <!-- ── 계정 ─────────────────────────────────────────── -->
-      <button class="hotspot h-login"  data-key="login"  aria-label="로그인"></button>
-      <div class="label t-login">로그인</div>
-
-      <button class="hotspot h-signup" data-key="signup" aria-label="회원가입"></button>
-      <div class="label t-signup">회원가입</div>
+<!-- 로그인 / 회원가입 — 그림에 그려 넣지 않고 진짜 버튼으로 그린다.
+           그려 두면 로그인 뒤 덮개와 글꼴·크기가 어긋난다. -->
+      <div class="auth">
+        <a class="ab ghost" href="./auth.html?mode=login">로그인</a>
+        <a class="ab solid" href="./auth.html?mode=signup">회원가입</a>
+      </div>
 
       <!-- 로그인한 사람에게는 그림 속 버튼 자리를 덮는다 -->
       <div class="me" id="topRight"></div>
