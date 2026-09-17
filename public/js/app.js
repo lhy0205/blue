@@ -701,6 +701,8 @@ function viewStep3(v) {
       <div><div id="rightCol"></div></div>
     </div>
 
+    <div id="tradeBox"></div>
+
     <!-- 투자 비교는 시뮬레이터 바로 아래에 둔다. 분석 카드 뒤에 두었더니
          STEP 3 안에서 2,000px 넘게 내려가 있어 없는 줄 알고 지나쳤다. -->
     <div style="margin-top:20px">
@@ -708,14 +710,16 @@ function viewStep3(v) {
       <div id="instrumentBox"></div>
     </div>
 
-    <div class="grid2" style="margin-top:14px">
-      <div id="v4Box"></div>
-      ${dSum.has ? '<div id="debtBox"></div>' : ''}
-    </div>
+    <!-- 둘을 나란히 두면 키가 달라 짧은 쪽 아래가 통째로 빈다.
+         한 줄에 하나씩, 폭을 다 쓰게 둔다. -->
+    <div id="v4Box" style="margin-top:14px"></div>
+    ${dSum.has ? '<div id="debtBox" style="margin-top:14px"></div>' : ''}
 
     <div style="margin-top:20px">
       <div class="mini" style="margin-bottom:8px">정책별 비교 · 실행할 하나를 확정하세요</div>
-      <div id="cmp" class="grid2"></div>
+      <!-- 정책이 하나뿐일 때 2단 고정이면 오른쪽 절반이 통째로 빈다.
+           auto-fit 이면 하나일 땐 폭을 다 쓰고 둘부터 갈라진다. -->
+      <div id="cmp" style="display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(340px,1fr))"></div>
       <div id="companion"></div>
     </div>
     ${disclaimer}
@@ -789,14 +793,20 @@ function viewStep3(v) {
       .map((r) => ({ r, was: (base.judged.find((b) => b.policy_id === r.policy_id) || {}).verdict }))
       .filter((d) => d.was && d.was !== d.r.verdict);
 
-    $('#rightCol').innerHTML = `
+    const feasCard = `
       <div class="card" style="box-shadow:none">
         <div class="mini">FEASIBILITY</div>
         <div style="font-size:16px;font-weight:800;color:var(--navy);margin:6px 0 6px">${esc(cur.fe.label)}</div>
         <div style="font-size:13px;color:var(--muted);line-height:1.6">${esc(cur.fe.message)}</div>
         <div class="note" style="margin-top:10px">🧮 ${esc(cur.fe.formula)}</div>
       </div>
-      <div class="card" style="box-shadow:none;margin-top:14px">
+    `;
+
+    /* Plan A/B — 부채가 있으면 오른쪽 열이 이미 길다. 이 카드를 아래 전폭으로
+       내려야 왼쪽 시뮬레이터와 키가 맞는다. 부채가 없으면 오른쪽이 짧으니
+       그대로 둔다. 어느 쪽이든 가운데가 통째로 비지 않는다. */
+    const tradeCard = `
+      <div class="card" style="box-shadow:none">
         <div class="mini">GOAL TRADE-OFF</div>
         <div style="font-size:17px;font-weight:800;color:var(--navy);margin:4px 0 12px">Plan A / Plan B</div>
         <div class="grid2">
@@ -806,7 +816,10 @@ function viewStep3(v) {
             <div style="font-size:12px;color:var(--muted);line-height:1.5">${esc(p.detail)}</div></div>`).join('')}
         </div>
       </div>
-      ${dSum.has ? `<div class="card" style="box-shadow:none;margin-top:14px">
+    `;
+
+    const repayCard = dSum.has ? `
+      <div class="card" style="box-shadow:none;margin-top:14px">
         <div class="mini">REPAY vs SAVE · 같은 돈을 어떻게 나눌까</div>
         <div style="font-size:12px;color:var(--muted);margin:6px 0 10px">
           월 ${num(saving)}원을 상환과 저축에 나누는 세 가지 방식입니다. 위 슬라이더로 직접 조절할 수도 있습니다.</div>
@@ -833,7 +846,9 @@ function viewStep3(v) {
         </div>
         <div class="note" style="margin-top:10px;font-size:11.5px">
           이자를 덜 내는 쪽과 목표에 빨리 닿는 쪽이 다를 수 있습니다. 어느 쪽을 우선할지는 선택입니다.</div>
-      </div>` : ''}
+      </div>` : '';
+
+    const diffCard = `
       ${diffs.length ? `<div class="card" style="box-shadow:none;margin-top:14px;background:var(--sky);border-color:var(--blue-bd)">
         <div class="mini">판정이 바뀌었습니다</div>
         <div style="display:grid;gap:7px;margin-top:8px">
@@ -845,6 +860,12 @@ function viewStep3(v) {
         </div>
         <div class="src">목표 금액을 바꾸면 주택가격·보증금 상한 조건에 걸리는 정책이 달라집니다.</div>
       </div>` : ''}`;
+
+    const gap = '<div style="height:14px"></div>';
+    $('#rightCol').innerHTML = dSum.has
+      ? feasCard + repayCard + diffCard
+      : feasCard + gap + tradeCard + diffCard;
+    $('#tradeBox').innerHTML = dSum.has ? '<div style="margin-top:14px">' + tradeCard + '</div>' : '';
 
     const v4 = cur.gg.costs != null ? simulateV4Scenarios({
       initialCash: cur.bp.currentAsset,
@@ -926,30 +947,45 @@ function viewStep3(v) {
     </div>` : '';
 
     const instrumentMeta = state.instrumentMeta || {};
+    /* 카드마다 지표 줄 수가 달라 아래가 어긋난다 — 가장 많은 쪽에 맞춘다 */
+    const METRIC_ROWS = Math.max(...state.instruments.slice(0, 3).map((i) => i.metrics.length), 0);
     $('#instrumentBox').innerHTML = state.instruments.length ? `<div class="card" style="box-shadow:none;margin-bottom:16px;background:#fff">
       <div class="card-h" style="margin-bottom:6px">
         <div><div class="mini">INSTRUMENT COMPARISON</div><div class="card-t" style="font-size:17px;margin-top:4px">채권·대표 ETF·시장 관심 비교</div></div>
         <span class="badge blue">DEMO 스냅샷</span>
       </div>
       <div class="card-sub">관측 지표와 모델 가정을 분리해 표시합니다. 비교는 가능하지만, 24개월 필수 주거자금에 자동 적용하지 않습니다.</div>
-      <div class="grid3" style="margin-top:14px;gap:10px">
+      <div class="note" style="margin-top:10px;font-size:11.5px;line-height:1.6">
+        세 카드의 맨 윗 숫자는 성격이 다릅니다 — <b>채권</b>은 공식 관측 지표(SEC 수익률·YTM),
+        <b>대표 지수</b>는 모델 가정(연 6%), <b>시장 관심</b>은 탐색용 지표입니다.
+        성격이 다른 값을 한 줄로 합치지 않습니다. 세 카드에서 바로 견줄 수 있는 것은 아래
+        <b>예상수익 · 기준 경로</b> 한 줄입니다.
+      </div>
+      <div class="grid3" style="margin-top:14px;gap:10px;align-items:stretch">
         ${state.instruments.slice(0, 3).map((item) => {
           const applicable = g.target_months >= 36 && item.category !== 'market_interest';
-          return `<div class="card" style="box-shadow:none;padding:14px;background:var(--slate-bg)">
+          /* 관심도는 지표 줄에 한 번만 낸다. 산식과 '산정 불가' 사유는
+             근거 블록으로 내린다 — 같은 값을 두 군데 쓰면 비교가 어긋나 보인다. */
+          const mi = item.category === 'market_interest'
+            ? marketInterestScore(item.market_interest || {}) : null;
+          return `<div class="card" style="box-shadow:none;padding:14px;background:var(--slate-bg);display:flex;flex-direction:column">
             <div style="display:flex;justify-content:space-between;gap:8px;align-items:start">
               <div><span class="chip">${esc(item.category_label)}</span><div style="font-size:17px;font-weight:800;color:var(--navy);margin-top:8px">${esc(item.ticker)}</div></div>
               <span class="badge ${applicable ? 'green' : 'gray'}">${applicable ? '적용 검토' : '비교 전용'}</span>
             </div>
-            <div style="font-size:12px;color:var(--muted);margin-top:4px">${esc(item.name)}</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:4px;line-height:1.45;min-height:35px">${esc(item.name)}</div>
+            <!-- 지표 개수가 3·4·3 이라 그냥 두면 아래 블록이 카드마다 다른
+                 높이에서 시작한다. 가장 많은 쪽에 맞춰 빈 줄로 채운다. -->
             <div style="display:grid;gap:6px;margin-top:12px">
-              ${item.metrics.map((metric) => `<div style="display:flex;justify-content:space-between;gap:8px;font-size:12px"><span style="color:var(--muted)">${esc(metric.label)}</span><b style="color:var(--navy)">${esc(metric.value)}</b></div>`).join('')}
+              ${item.metrics.concat(Array(Math.max(0, METRIC_ROWS - item.metrics.length)).fill(null))
+                .map((metric) => metric
+                  ? `<div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;min-height:18px"><span style="color:var(--muted)">${esc(metric.label)}</span><b style="color:var(--navy)">${esc(metric.type === 'INTEREST' && mi ? (mi.available ? String(mi.score) : '산정 불가') : metric.value)}</b></div>`
+                  : '<div style="min-height:18px"></div>').join('')}
             </div>
             ${(() => {
               /* 상품별 예상수익은 승인된 가정이 있는 상품에만 낸다.
                  없으면 숫자를 지어내지 않고 이유를 적는다 (V4 §10). */
               const pr = projectInstrument(item, { ...planIn, scenario: 'BASE' });
-              const mi = item.category === 'market_interest'
-                ? marketInterestScore(item.market_interest || {}) : null;
               return `<div style="margin-top:11px;padding-top:10px;border-top:1px solid var(--bd)">
                 <div style="display:flex;justify-content:space-between;gap:8px;font-size:12px">
                   <span style="color:var(--muted)">예상수익 · 기준 경로</span>
@@ -960,17 +996,13 @@ function viewStep3(v) {
                 ${pr.available
                   ? `<div style="font-size:11px;color:var(--muted2);margin-top:3px">연 ${(pr.annualReturn * 100).toFixed(1)}% 가정 · 수익 기여 ${num(pr.returnComponent)}원</div>`
                   : `<div style="font-size:11px;color:var(--muted2);line-height:1.5;margin-top:3px">${esc(pr.reason)}</div>`}
-                ${mi ? `<div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;margin-top:8px">
-                    <span style="color:var(--muted)">시장 관심도</span>
-                    ${mi.available ? `<b>${mi.score}</b>` : `<span style="color:var(--muted2)">산정 불가</span>`}
-                  </div>
-                  <div style="font-size:11px;color:var(--muted2);line-height:1.5;margin-top:3px">${esc(mi.available ? mi.formula : mi.reason)}</div>` : ''}
               </div>`;
             })()}
-            <div class="warn" style="margin-top:12px;font-size:11.5px;line-height:1.5">${esc(item.fit)}</div>
+            <div class="warn" style="margin-top:auto;margin-bottom:0;font-size:11.5px;line-height:1.5;min-height:64px;display:flex;align-items:center">${esc(item.fit)}</div>
             <details style="margin-top:10px"><summary style="font-size:12px;font-weight:700;color:var(--blue);cursor:pointer">위험·가정·출처 보기</summary>
               <div style="font-size:11.5px;color:var(--muted);line-height:1.6;margin-top:8px">
                 <div><b>위험:</b> ${esc(item.risk)}</div><div><b>가정:</b> ${esc(item.assumption)}</div>
+                ${mi ? `<div><b>시장 관심도:</b> ${esc(mi.available ? mi.formula : mi.reason)}</div>` : ''}
                 <div class="src" style="margin-top:6px">기준일 ${esc(instrumentMeta.as_of || '확인 불가')} · 확인일 ${esc(instrumentMeta.checked_on || '확인 불가')} · <a href="${esc(item.source.url)}" target="_blank" rel="noopener">${esc(item.source.name)}</a></div>
               </div>
             </details>
@@ -1071,7 +1103,7 @@ function viewStep3(v) {
 
         <div style="margin-top:14px">
           <div class="mini" style="margin-bottom:8px">완납 vs 일부 상환</div>
-          <div style="display:grid;gap:7px">
+          <div style="display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))">
             ${lumpsumScenarios(debts, cur.gg, cur.bp, repay, netSaving).map((o) => {
               const on = Math.abs(o.lump - lump) < 150000;
               return `<div style="border:${on ? '2px solid var(--blue)' : '1px solid var(--bd)'};background:${on ? 'var(--sky)' : '#fff'};border-radius:10px;padding:10px 12px">
