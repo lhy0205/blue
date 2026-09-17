@@ -10,7 +10,7 @@
  * ========================================================================== */
 
 :root{
-  --forest:#2E1D0E;   /* 가을 숲 — 그림 밖으로 비어져도 화면과 이어진다 */
+  --forest:#112615;   /* 숲 그림 밖으로 비어져도 화면과 이어진다 */
   --ink:#24331f;
   --muted:#64705d;
   --ring:0 0 0 2px rgba(255,255,255,.9), 0 12px 34px rgba(0,0,0,.18);
@@ -309,7 +309,7 @@ body.show-map .label{opacity:1;transform:translateY(0)}
 .scenery .dam{position:absolute;display:block;
   /* 그림자가 없으면 공중에 뜬 스티커로 보인다.
      drop-shadow 는 실루엣을 따라가므로 잔가지 결까지 살아난다. */
-  filter:drop-shadow(0 5px 6px rgba(56,34,14,.42)) drop-shadow(0 1px 1px rgba(56,34,14,.3))}
+  filter:drop-shadow(0 5px 6px rgba(24,38,22,.42)) drop-shadow(0 1px 1px rgba(24,38,22,.3))}
 .scenery .dam-branch{left:-6.50%;top:41.58%;width:35.96%;height:26.40%}
 .scenery .dam-built {left:-6.50%;top:43.76%;width:27.95%;height:24.22%}
 body[data-goal="y"]:not([data-dam="over"]) .dam-branch{display:none}
@@ -396,9 +396,9 @@ body[data-auth="in"] .auth{display:none}
 /* 둘이 붙어 하나의 알약이 된다 */
 .me .nm   {border-radius:999px 0 0 999px;background:#fff;color:var(--ink)}
 /* 반투명이면 아래 흰 버튼이 비쳐 올라온다 — 불투명해야 한다 */
-.me button{border-radius:0 999px 999px 0;background:#5C3A16;color:#fff;
+.me button{border-radius:0 999px 999px 0;background:#16250F;color:#fff;
   border:0;cursor:pointer;transition:.14s}
-.me button:hover{background:#42280E}
+.me button:hover{background:#0B1606}
 
 /* ───────────────────────── 도구 · 안내 ───────────────────────── */
 .tools{position:absolute;left:20px;top:20px;z-index:30;display:flex;gap:9px}
@@ -653,7 +653,7 @@ body[data-dam="over"] .fauna .f-pori{
   padding:11px 15px;border-radius:15px;
   background:rgba(255,255,255,.95);color:#4B2A16;
   font-size:13px;line-height:1.5;font-weight:700;letter-spacing:-.2px;
-  filter:drop-shadow(0 6px 16px rgba(56,34,14,.30));
+  filter:drop-shadow(0 6px 16px rgba(24,38,22,.30));
   animation:warnIn .5s ease-out 1.25s both
 }
 .damwarn b{color:#C9553F}
