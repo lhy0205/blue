@@ -55,9 +55,9 @@ const SPOT = {
   /* 실행 로드맵 */
   dam:    { href: './app.html#step5', need: 'goal', why: '실행 로드맵은 ' + NEED_GOAL },
 
-  /* 마이페이지 — 집 전체와 문이 같은 곳으로 간다 */
-  house:  { href: './app.html#mypage', need: 'goal', why: '내 정보는 ' + NEED_GOAL },
-  door:   { href: './app.html#mypage', need: 'goal', why: '문을 열려면 ' + NEED_GOAL },
+  /* 마이페이지 — 집 전체와 문이 같은 곳으로 간다. 집 안이 곧 포리의 방이다. */
+  house:  { href: './room.html', need: 'goal', why: '내 정보는 ' + NEED_GOAL },
+  door:   { href: './room.html', need: 'goal', why: '문을 열려면 ' + NEED_GOAL },
 
   /* 기능 설명 */
   puddle: { href: './features.html' },
