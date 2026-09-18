@@ -104,9 +104,18 @@ button.o-books:hover .tip,button.o-books:focus-visible .tip{transform:translate(
 
 /* ───────────────────────── 책장 서랍 ─────────────────────────
    기본은 닫혀 있다. ☰ 를 누르면 왼쪽에서 밀려 들어온다. */
+/* 디자이너가 다시 그려준 반듯한 책장(704x1260). 앞 그림은 손그림이라
+   바깥선이 물결치고 칸이 기울어 있었다.
+   비율이 0.592 -> 0.559 로 길어져, 바닥선(72%)에 그대로 서도록 폭과
+   높이를 다시 잡았다. */
 .drawer{
-  position:absolute;left:-2.00%;top:12.20%;width:20.00%;
-  aspect-ratio:812 / 1371;z-index:20;
+  position:absolute;
+  /* 무대가 화면보다 넓을 때(세로가 길면 그렇다) 무대 왼쪽은 화면 밖이다.
+     -2% 로 두면 책 이름의 첫 글자가 잘린다. 화면 왼쪽에서 14px 자리를
+     계산해 붙이고, 넘칠 일이 없을 땐 1.5% 만 띄운다. */
+  left:max(1.5%, calc((100% - 100vw) / 2 + 14px));
+  top:11.80%;width:19.00%;
+  aspect-ratio:704 / 1260;z-index:20;
   transform:translateX(-106%);
   transition:transform .42s cubic-bezier(.22,.9,.28,1);
   filter:drop-shadow(14px 8px 22px rgba(16,10,6,.45))
@@ -116,7 +125,7 @@ body.nav-open .drawer{transform:translateX(0)}
 
 /* 칸 — 책 뭉치를 그대로 얹어두고, 올리면 앞으로 빠져나온다 */
 .srow{
-  position:absolute;left:5.42%;width:89.16%;display:block;
+  position:absolute;left:4.55%;width:87.50%;display:block;
   text-decoration:none;overflow:visible
 }
 .srow img{display:block;width:100%;height:auto;
@@ -135,12 +144,12 @@ a.srow:hover img,a.srow:focus-visible img{
 a.srow:hover span,a.srow:focus-visible span{opacity:1}
 a.srow:focus-visible{outline:none}
 
-/* 칸 자리 — 책장 그림(812×1371) 안에서의 비율 */
-.r1{top: 3.21%}
-.r2{top:23.49%}
-.r3{top:40.41%}
-.r4{top:62.14%}
-.r5{top:81.25%;pointer-events:none}
+/* 칸 자리 — 책장 그림(704×1260) 안에서의 비율 */
+.r1{top: 2.38%}
+.r2{top:21.83%}
+.r3{top:41.51%}
+.r4{top:59.60%}
+.r5{top:78.57%;pointer-events:none}
 
 .scrim{position:absolute;inset:0;z-index:15;background:rgba(18,10,5,.42);
   opacity:0;transition:opacity .3s ease}
