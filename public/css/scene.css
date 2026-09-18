@@ -168,16 +168,25 @@ body.show-map .label{opacity:1;transform:translateY(0)}
    칸을 그대로 문틀에 맞추면 그 프레임이 작아져 아래가 뜬다. 쉬는 프레임이
    문틀(x 1104~1272, y 473~681)을 덮도록 칸을 키우고 올렸다 —
    좌우로 24px 씩 물려 원래 그림의 문틀 가장자리까지 가린다. */
-.doorfx .leaf{
-  position:absolute;left:66.05%;top:47.74%;width:14.09%;height:26.05%;
-  display:block;
-  background:url(../img/door_sheet.webp) no-repeat 0 0;
-  background-size:2500% 100%;               /* 25 프레임 */
+/* 창 — 쉬는 프레임이 딱 맞는 크기다. 돌아가는 프레임은 칸을 꽉 채워
+   20% 커지므로, 이 창이 문틀 밖으로 나가는 만큼 잘라낸다. */
+.doorfx .leafwin{
+  position:absolute;left:66.05%;top:49.16%;width:13.21%;height:21.64%;
+  display:block;overflow:hidden;
   filter:drop-shadow(0 3px 5px rgba(24,38,22,.34))
 }
-@keyframes doorSwing{to{background-position:100% 0}}
-.h-door:hover ~ .doorfx .leaf,
-.h-door:focus-visible ~ .doorfx .leaf{animation:doorSwing 2s steps(25) infinite}
+/* 띠 — 25칸을 가로로 이어 붙인 그림. 한 칸이 창보다 조금 크다. */
+.doorfx .leaf{
+  position:absolute;left:0;top:-6.57%;width:2666.67%;height:120.41%;
+  display:block;
+  background:url(../img/door_sheet.webp) 0 0 / 100% 100% no-repeat
+}
+/* 띠를 제 폭만큼 밀면 한 단계가 정확히 한 칸이다.
+   background-position 을 0% -> 100% 로 밟으면 한 단계가 24/25 칸이라
+   프레임이 어긋나 두 장이 겹쳐 보인다. */
+@keyframes doorSwing{to{transform:translateX(-100%)}}
+.h-door:hover ~ .doorfx .leafwin .leaf,
+.h-door:focus-visible ~ .doorfx .leafwin .leaf{animation:doorSwing 2s steps(25) infinite}
 
 /* 문만은 밝아지지 않는다 — 밝아진 '닫힌 문'이 위에 덮여 움직임이 안 보인다 */
 .h-door:hover,.h-door:focus-visible{opacity:0;filter:none}
@@ -225,10 +234,9 @@ body[data-goal="y"] .doorfx{display:none}
   display:block;overflow:hidden
 }
 .hs-leaf{
-  position:absolute;left:0;top:-6.58%;width:106.70%;height:120.40%;
+  position:absolute;left:0;top:-6.57%;width:2666.67%;height:120.41%;
   display:block;
-  background:url(../img/door_sheet.webp) no-repeat 0 0;
-  background-size:2500% 100%                 /* 25 프레임 */
+  background:url(../img/door_sheet.webp) 0 0 / 100% 100% no-repeat
 }
 .h-door:hover ~ .housefx .hs-leaf,
 .h-door:focus-visible ~ .housefx .hs-leaf{animation:doorSwing 2s steps(25) infinite}
