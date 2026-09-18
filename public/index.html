@@ -93,6 +93,15 @@
       <!-- 살아 있는 것들. 배경 위에 얹혀 각자 다른 박자로 숨쉰다.
            포리는 배경에서 지워져 있어 자유롭게 움직일 수 있고,
            강아지는 제자리에 겹쳐 두어 커지기만 한다(원본을 늘 덮는다). -->
+      <!-- 목표가 정해진 뒤의 집. 옛 집(돔) 위를 통째로 덮는다.
+           문은 이 집의 문을 따로 오려 경첩으로 돌린다 — 애니메이션 문은
+           아치형이라 이 집의 사각 문틀에 맞지 않는다. -->
+      <div class="housefx" aria-hidden="true">
+        <img class="hs-yard" src="./img/yard_patch.png" alt="">
+        <img class="hs-body" src="./img/house_body.png" alt="">
+        <span class="hs-door"><i class="hs-leaf"></i></span>
+      </div>
+
       <!-- 터진 물 — 문보다 앞이다. 물이 문을 덮어야 '잠겼다'로 읽힌다.
            .scenery(5) 에 두면 문(.doorfx 11) 뒤로 깔린다. -->
       <div class="flood" aria-hidden="true">

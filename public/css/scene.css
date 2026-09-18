@@ -182,6 +182,58 @@ body.show-map .label{opacity:1;transform:translateY(0)}
 /* 문만은 밝아지지 않는다 — 밝아진 '닫힌 문'이 위에 덮여 움직임이 안 보인다 */
 .h-door:hover,.h-door:focus-visible{opacity:0;filter:none}
 
+/* ─────────────────── 목표가 정해진 뒤의 집 ───────────────────
+   옛 집(나뭇가지 돔)은 '아직 짓는 중'이고, 목표를 정하면 완성된 집이 된다.
+   가로세로비가 1.389 로 옛 집(1.388)과 사실상 같아 같은 자리에 그대로
+   덮인다.
+
+   문은 이 집의 문을 따로 오려 왼쪽 경첩으로 돌린다. 스프라이트 문은
+   아치형이라 이 집의 사각 문틀에 넣으면 모서리가 뜬다 — 그래서 목표가
+   정해지면 스프라이트 문은 숨기고 이 문짝이 대신 열린다. */
+.housefx{
+  position:absolute;inset:0;pointer-events:none;z-index:11;display:none;
+  perspective:1500px;perspective-origin:50% 46%
+}
+body[data-goal="y"] .housefx{display:block}
+body[data-goal="y"] .doorfx{display:none}
+
+.hs-body{
+  position:absolute;left:52.60%;top:24.50%;width:38.60%;height:47.23%;
+  display:block;
+  filter:drop-shadow(0 6px 10px rgba(24,38,22,.34))
+}
+/* 옛 집에 딸린 세간(랜턴 기둥·울타리·장작더미)을 덮는다. 배경 그림은
+   목표 전 화면과 같은 파일이라 지울 수 없어, 이 상태에서만 덮는다. */
+.hs-yard{
+  position:absolute;left:85.14%;top:41.79%;width:13.82%;height:37.42%;
+  display:block
+}
+
+/* 문 — 디자이너가 그린 그 문을 이 집의 문틀에 넣는다.
+   문틀(133x278)과 문짝(300x289)의 비율이 달라 문틀에 맞춰 눌렀다.
+   아치 모양은 남아 돌문처럼 읽힌다.
+   돌아가는 프레임은 문틀보다 크므로 틀 밖으로 나가는 만큼 잘라낸다 —
+   문설주에 가리는 게 실제로 그렇게 보인다. */
+.hs-door{
+  position:absolute;left:59.88%;top:54.81%;width:4.44%;height:15.78%;
+  display:block;overflow:hidden
+}
+.hs-leaf{
+  position:absolute;left:0;top:-6.58%;width:106.70%;height:120.40%;
+  display:block;
+  background:url(../img/door_sheet.webp) no-repeat 0 0;
+  background-size:2500% 100%                 /* 25 프레임 */
+}
+.h-door:hover ~ .housefx .hs-leaf,
+.h-door:focus-visible ~ .housefx .hs-leaf{animation:doorSwing 2s steps(25) infinite}
+
+/* 집이 바뀌면 클릭 판정도 바뀌어야 한다. 옛 집은 돔, 새 집은 박공 지붕이라
+   모양이 다르다 — 그대로 두면 지붕 위 빈 하늘이 눌린다. */
+body[data-goal="y"] .h-house{clip-path:polygon(52.63% 47.78%, 55.17% 43.23%, 58.34% 35.74%, 60.88% 28.87%, 61.52% 24.50%, 71.66% 24.62%, 72.30% 27.79%, 74.20% 31.94%, 74.84% 26.55%, 76.74% 25.92%, 80.55% 26.09%, 81.18% 35.18%, 89.43% 35.97%, 91.06% 48.63%, 90.43% 49.93%, 89.16% 49.82%, 87.90% 65.15%, 85.36% 69.40%, 84.72% 69.69%, 72.67% 68.04%, 68.86% 71.28%, 65.06% 71.50%, 63.79% 70.65%, 59.34% 69.86%, 58.71% 70.65%, 56.81% 70.37%, 56.17% 69.35%, 55.54% 56.18%, 54.27% 50.61%, 53.63% 51.07%, 53.00% 49.14%)}
+body[data-goal="y"] .h-door{
+  clip-path:inset(54.81% 35.68% 29.41% 59.88% round 4px)
+}
+
 /* ───────────────────────── 살아 있는 것들 ─────────────────────────
    숲이 정지 화면으로 보이지 않게 몇몇을 계속 움직인다.
 
