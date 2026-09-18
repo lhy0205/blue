@@ -208,6 +208,12 @@ body[data-goal="y"] .doorfx{display:none}
   position:absolute;left:68.87%;top:41.79%;width:30.09%;height:37.42%;
   display:block
 }
+/* 굴뚝 옆에 옛 돔의 가지 하나가 새 지붕 위로 삐져나온다(x 1201~1319,
+   y 303~360). 그 자리도 바로 위 숲을 내려 덮는다. */
+.hs-roof{
+  position:absolute;left:71.07%;top:27.23%;width:12.48%;height:13.93%;
+  display:block
+}
 
 /* 문 — 디자이너가 그린 그 문을 이 집의 문틀에 넣는다.
    문틀(133x278)과 문짝(300x289)의 비율이 달라 문틀에 맞춰 눌렀다.
