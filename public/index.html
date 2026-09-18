@@ -78,12 +78,11 @@
 
       <!-- 문짝. 그림에서 떼어낸 조각이라 경첩(왼쪽)을 축으로 실제로 돌아간다.
            .h-door 뒤에 있어야 형제 선택자(~)로 호버를 받는다. -->
+      <!-- 문 — 디자이너가 그린 50프레임을 25장 스프라이트로 구웠다.
+           GIF 로 두면 호버와 무관하게 계속 돌아 프레임을 맞출 수 없다. -->
       <div class="doorfx" aria-hidden="true">
         <img class="jamb" src="./img/door_inner.png" alt="">
-        <div class="leafwrap">
-          <img class="leaf" src="./img/door.png" alt="">
-          <span class="shade"></span>
-        </div>
+        <span class="leaf"></span>
       </div>
 
 
@@ -102,6 +101,7 @@
       </div>
 
       <div class="fauna" aria-hidden="true">
+        <img class="f f-boat" src="./img/boat.png" alt="">
         <img class="f f-dog" src="./img/dog.png" alt=""
              style="left:41.22%;top:68.09%;width:6.85%;height:11.95%">
         <img class="f f-pori" src="./img/pori.png" alt=""
