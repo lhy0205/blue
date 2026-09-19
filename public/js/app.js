@@ -149,8 +149,11 @@ function route() {
 
   renderGoalbar();
   renderSteps(view);
-  document.querySelectorAll('#gnb a').forEach((a) =>
-    a.classList.toggle('on', a.getAttribute('href') === '#' + hash));
+  document.querySelectorAll('#gnb a').forEach((a) => {
+    const href = a.getAttribute('href');
+    const isInvest = href === '#invest' && (hash === 'invest' || hash === 'step3');
+    a.classList.toggle('on', href === '#' + hash || isInvest);
+  });
 
   const v = $('#view');
   v.innerHTML = '';
