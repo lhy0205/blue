@@ -592,6 +592,8 @@ function viewStep3(v) {
   /* 탐색용 목표 금액 — 저장하지 않는다. 확정하려면 아래 버튼을 눌러야 한다. */
   let simTarget = state.simTarget || g.target_amount;
   let saving = g.monthly_saving || 0;
+  let selectedTradeoff = 'B';
+  const tradeoffSaving = saving;
 
   /* ── 부채 : 갚는 축 ─────────────────────────────────────────────────
      debts 는 프로필에 있다. 없으면 상환 UI 전체를 숨긴다. */
@@ -735,7 +737,7 @@ function viewStep3(v) {
     const months0 = g.target_months || 1;
     const pre = applyRepayment(debts, { lumpsum: lump, monthlyRepay: repay, months: months0 });
     const effSaving = netSaving + Math.round(pre.freedTotal / months0);
-    const cur = planFor(simTarget, effSaving, lump, repay);
+    let cur = planFor(simTarget, effSaving, lump, repay);
     const changed = simTarget !== g.target_amount;
 
     $('#tv').textContent = money(simTarget);
@@ -756,6 +758,17 @@ function viewStep3(v) {
           <button class="btn sm" id="applyTarget">이 금액으로 목표 변경</button>
         </span>
       </div>` : '';
+
+    /* 선택한 Plan을 먼저 적용한 뒤 D-Day와 결과를 렌더링한다. */
+    let t = tradeoff(cur.bp, cur.gg, tradeoffSaving);
+    const activeSaving = selectedTradeoff === 'A' ? t.A.monthlySaving : t.B.monthlySaving;
+    if (activeSaving !== effSaving) {
+      cur = planFor(simTarget, activeSaving, lump, repay);
+      t = tradeoff(cur.bp, cur.gg, tradeoffSaving);
+    }
+    const selectedPlan = t[selectedTradeoff];
+    const planMonthlySaving = selectedPlan.monthlySaving;
+    const planMonths = selectedTradeoff === 'B' ? selectedPlan.value : g.target_months;
 
     /* D-Day — 목표 기간 기준과 저축 속도 기준을 나란히 */
     const unknownDday = cur.dday.unknown || cur.dday.days === null;
@@ -788,7 +801,6 @@ function viewStep3(v) {
       <div style="font-size:11px;opacity:.85;margin-top:6px">🧮 ${esc(cur.sim.formula)}</div></div>`;
 
     /* 오른쪽: 달성 가능성 + Plan A/B + 판정 변화 */
-    const t = tradeoff(cur.bp, cur.gg, saving);
     const diffs = cur.judged
       .map((r) => ({ r, was: (base.judged.find((b) => b.policy_id === r.policy_id) || {}).verdict }))
       .filter((d) => d.was && d.was !== d.r.verdict);
@@ -810,10 +822,10 @@ function viewStep3(v) {
         <div class="mini">GOAL TRADE-OFF</div>
         <div style="font-size:17px;font-weight:800;color:var(--navy);margin:4px 0 12px">Plan A / Plan B</div>
         <div class="grid2">
-          ${[['A', t.A], ['B', t.B]].map(([k, p]) => `<div style="border:${p.recommended ? '2px solid var(--blue)' : '1px solid var(--bd)'};background:${p.recommended ? 'var(--sky)' : '#fff'};border-radius:12px;padding:14px">
+          ${[['A', t.A], ['B', t.B]].map(([k, p]) => `<button type="button" data-tradeoff="${k}" data-saving="${p.monthlySaving}" style="text-align:left;width:100%;border:${selectedTradeoff === k ? '2px solid var(--blue)' : '1px solid var(--bd)'};background:${selectedTradeoff === k ? 'var(--sky)' : '#fff'};border-radius:12px;padding:14px">
             <div style="font-size:11px;font-weight:800;color:var(--blue)">Plan ${k}</div>
             <div style="font-size:14px;font-weight:800;color:var(--navy);margin:6px 0 4px">${esc(p.title)}</div>
-            <div style="font-size:12px;color:var(--muted);line-height:1.5">${esc(p.detail)}</div></div>`).join('')}
+            <div style="font-size:12px;color:var(--muted);line-height:1.5">${esc(p.detail)}</div></button>`).join('')}
         </div>
       </div>
     `;
@@ -869,8 +881,8 @@ function viewStep3(v) {
 
     const v4 = cur.gg.costs != null ? simulateV4Scenarios({
       initialCash: cur.bp.currentAsset,
-      contribution: cur.gg.goal_contribution || saving,
-      months: cur.gg.target_months,
+      contribution: planMonthlySaving,
+      months: planMonths,
       requiredEquity: cur.bp.requiredEquity,
       model: 'DEFENSIVE',
       glidePath: true,
@@ -895,8 +907,8 @@ function viewStep3(v) {
        주거자금에 균형·성장형을 자동 배정하지 않기 위해서다. */
     const planIn = {
       initialCash: cur.bp.currentAsset,
-      contribution: cur.gg.goal_contribution || saving,
-      months: cur.gg.target_months,
+      contribution: planMonthlySaving,
+      months: planMonths,
       requiredEquity: cur.bp.requiredEquity,
       goalType: g.goal_type,
       emergencyFundReady: (cur.gg.emergency_reserved || 0) > 0,
@@ -1161,6 +1173,12 @@ function viewStep3(v) {
     document.querySelectorAll('[data-alloc]').forEach((b) => b.addEventListener('click', () => {
       repay = Number(b.dataset.alloc);
       const rs = $('#rSl'); if (rs) rs.value = repay;
+      redraw();
+    }));
+    document.querySelectorAll('[data-tradeoff]').forEach((b) => b.addEventListener('click', () => {
+      selectedTradeoff = b.dataset.tradeoff;
+      saving = Number(b.dataset.saving);
+      const ss = $('#sSl'); if (ss) ss.value = saving;
       redraw();
     }));
     document.querySelectorAll('[data-final]').forEach((b) => b.addEventListener('click', async (e) => {

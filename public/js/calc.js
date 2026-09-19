@@ -303,12 +303,14 @@ export function tradeoff(bp, goal, monthlySaving) {
       title: '기간을 지킨다',
       detail: `${goal.target_months}개월 목표를 유지하려면 월 ${money(bp.recommendedMonthly)}이 필요합니다.`,
       value: bp.recommendedMonthly,
+      monthlySaving: bp.recommendedMonthly,
       recommended: false,
     },
     B: {
       title: '저축 부담을 낮춘다',
       detail: `월 ${money(monthlySaving)}을 유지하면 목표 시점이 ${sim.monthsNeeded}개월로 ${sim.gapMonths > 0 ? `약 ${sim.gapMonths}개월 연장` : '단축'}됩니다.`,
       value: sim.monthsNeeded,
+      monthlySaving,
       recommended: true,
     },
   };
