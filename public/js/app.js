@@ -927,7 +927,7 @@ function viewStep3(v) {
             <div style="font-size:11.5px;color:var(--muted);margin-top:4px">
               주식 ${(a.stock * 100).toFixed(0)}% · 채권 ${(a.bond * 100).toFixed(0)}% · 현금 ${(a.cash * 100).toFixed(0)}%</div>
             <div class="bar" style="height:7px;margin:9px 0;display:flex;background:var(--bd)">
-              ${bar(a.stock, 'var(--brand)')}${bar(a.bond, 'var(--ok)')}${bar(a.cash, 'var(--muted2)')}
+              ${bar(a.stock, 'var(--brand-soft)')}${bar(a.bond, 'var(--ok)')}${bar(a.cash, 'var(--muted2)')}
             </div>
             <div style="display:flex;justify-content:space-between;font-size:12px;margin-top:8px">
               <span style="color:var(--muted)">기준 경로</span><b class="num">${num(base.goalAssets)}원</b></div>
